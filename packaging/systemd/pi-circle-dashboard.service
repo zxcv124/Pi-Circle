@@ -18,8 +18,7 @@ NoNewPrivileges=false
 PrivateTmp=true
 ProtectHome=true
 ProtectSystem=full
-ReadWritePaths=/var/lib/pi-circle /var/log/pi-circle /run /etc/pi-circle
-ReadOnlyPaths=/etc/pihole
+ReadWritePaths=/var/lib/pi-circle /var/log/pi-circle /run /etc/pi-circle /etc/pihole /var/log/pihole
 # Needed to list on-path L4 flows via `conntrack -L` for linked devices.
 CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
 AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW

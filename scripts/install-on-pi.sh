@@ -43,7 +43,7 @@ if [[ -z "${cidr}" ]]; then
 fi
 
 apt-get update
-apt-get install -y --no-install-recommends python3 python3-venv python3-pip sqlite3 nftables iproute2 dsniff rsync conntrack nmap
+apt-get install -y --no-install-recommends python3 python3-venv python3-pip sqlite3 nftables iproute2 dsniff rsync conntrack nmap curl ca-certificates
 # Per-flow byte counters for Sniffnet-style linked-device connections.
 if [[ -w /proc/sys/net/netfilter/nf_conntrack_acct ]]; then
   echo 1 > /proc/sys/net/netfilter/nf_conntrack_acct || true
@@ -53,6 +53,41 @@ cat > /etc/sysctl.d/90-pi-circle-conntrack.conf <<'EOF'
 net.netfilter.nf_conntrack_acct = 1
 EOF
 sysctl --system >/dev/null 2>&1 || true
+
+# Bundle Pi-hole when missing so Pi-Circle is a single appliance install.
+# Set PI_CIRCLE_INSTALL_PIHOLE=0 to skip (already have Pi-hole managed separately).
+if ! command -v pihole >/dev/null 2>&1; then
+  if [[ "${PI_CIRCLE_INSTALL_PIHOLE:-1}" == "1" ]]; then
+    printf 'Pi-hole not found — installing upstream Pi-hole (credited engine under Pi-Circle)...\n'
+    install -d -o root -g root -m 0755 /etc/pihole
+    if [[ ! -f /etc/pihole/setupVars.conf ]]; then
+      cat > /etc/pihole/setupVars.conf <<EOF
+PIHOLE_INTERFACE=${interface}
+QUERY_LOGGING=true
+INSTALL_WEB_SERVER=true
+INSTALL_WEB_INTERFACE=true
+LIGHTTPD_ENABLED=true
+CACHE_SIZE=10000
+DNS_FQDN_REQUIRED=true
+DNS_BOGUS_PRIV=true
+DNSMASQ_LISTENING=local
+WEBPASSWORD=
+BLOCKING_ENABLED=true
+PIHOLE_DNS_1=8.8.8.8
+PIHOLE_DNS_2=1.1.1.1
+DNSSEC=false
+REV_SERVER=false
+EOF
+      chmod 0644 /etc/pihole/setupVars.conf
+    fi
+    curl -sSL https://install.pi-hole.net -o /tmp/pihole-install.sh
+    PIHOLE_SKIP_OS_CHECK="${PIHOLE_SKIP_OS_CHECK:-true}" bash /tmp/pihole-install.sh --unattended
+    rm -f /tmp/pihole-install.sh
+  else
+    printf 'ERROR: Pi-hole is not installed and PI_CIRCLE_INSTALL_PIHOLE=0.\n' >&2
+    exit 1
+  fi
+fi
 
 if ! getent group pi-circle >/dev/null; then
   groupadd --system pi-circle
@@ -96,18 +131,22 @@ install -o root -g root -m 0644 "${INSTALL_DIR}/packaging/systemd/pi-circle-agen
 install -o root -g root -m 0644 "${INSTALL_DIR}/packaging/systemd/pi-circle-dashboard.service" /etc/systemd/system/pi-circle-dashboard.service
 install -o root -g root -m 0755 "${INSTALL_DIR}/scripts/set-arp-assisted-targets.sh" /usr/local/sbin/pi-circle-set-arp-assisted-targets
 install -o root -g root -m 0755 "${INSTALL_DIR}/scripts/enable-arp-assisted-target.sh" /usr/local/sbin/pi-circle-enable-arp-assisted-target
+install -o root -g root -m 0755 "${INSTALL_DIR}/scripts/pi-circle-pihole-ctl.sh" /usr/local/sbin/pi-circle-pihole-ctl
 cat > /etc/sudoers.d/pi-circle-dashboard <<'EOF'
 pi-circle ALL=(root) NOPASSWD: /usr/local/sbin/pi-circle-set-arp-assisted-targets *
+pi-circle ALL=(root) NOPASSWD: /usr/local/sbin/pi-circle-pihole-ctl *
 EOF
 chmod 0440 /etc/sudoers.d/pi-circle-dashboard
 visudo -cf /etc/sudoers.d/pi-circle-dashboard >/dev/null
 
 systemctl daemon-reload
-systemctl enable nftables pi-circle-agent pi-circle-dashboard
+systemctl enable nftables pihole-FTL pi-circle-agent pi-circle-dashboard 2>/dev/null || systemctl enable nftables pi-circle-agent pi-circle-dashboard
 systemctl restart nftables
+systemctl restart pihole-FTL 2>/dev/null || true
 systemctl restart pi-circle-agent
 systemctl restart pi-circle-dashboard
 
-printf 'Pi-Circle installed.\n'
+printf 'Pi-Circle + Pi-hole appliance installed.\n'
 printf 'Dashboard: http://%s:8088/\n' "$(hostname -I | awk '{ print $1 }')"
+printf 'Pi-hole engine credited inside Pi-Circle DNS / Settings.\n'
 printf 'Config: %s/config.toml\n' "${CONFIG_DIR}"

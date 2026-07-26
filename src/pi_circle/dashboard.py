@@ -21,6 +21,7 @@ from .discovery_service import auto_link_androids, run_nmap_identification
 from .history import HistoryReader
 from .inventory import sync_device_inventory
 from .pihole import PiholeQueryReader, PiholeStateReader
+from . import pihole_control
 from .policy import evaluate_all_policies, evaluate_device_policy
 from .setup_health import evaluate_setup
 from .storage import DEVICE_TYPES, Store
@@ -64,6 +65,19 @@ class ProfileUpdateRequest(BaseModel):
     daily_minutes: int | None = Field(default=None, ge=0, le=1440)
     clear_bedtime: bool = False
     clear_daily_minutes: bool = False
+
+
+class PiholeDisableRequest(BaseModel):
+    duration: str | None = Field(default=None, max_length=8)
+
+
+class PiholeDomainRequest(BaseModel):
+    domain: str = Field(min_length=1, max_length=253)
+    action: str = Field(default="add", max_length=16)
+
+
+class PiholeGravityRequest(BaseModel):
+    force: bool = False
 
 
 def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
@@ -435,7 +449,106 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
     def pihole_summary() -> dict[str, object]:
         current_settings = load_settings(app.state.config_path)
         reader = PiholeStateReader(current_settings.pihole.gravity_db, current_settings.paths.pihole_dir)
-        return reader.summary().to_dict()
+        summary = reader.summary().to_dict()
+        control = pihole_control.read_status(pihole_dir=current_settings.paths.pihole_dir)
+        summary.update(
+            {
+                "installed": control.installed,
+                "blocking_enabled": control.blocking_enabled,
+                "ftl_listening": control.ftl_listening,
+                "status_raw": control.raw,
+                "engine": "Pi-hole",
+                "credit": "DNS engine by Pi-hole (https://pi-hole.net/)",
+            }
+        )
+        return summary
+
+    @app.get("/api/pihole/status")
+    def pihole_status(request: Request) -> dict[str, object]:
+        current_settings = load_settings(app.state.config_path)
+        _require_lan_admin(request, current_settings)
+        return pihole_control.read_status(pihole_dir=current_settings.paths.pihole_dir).to_dict()
+
+    @app.post("/api/pihole/enable")
+    def pihole_enable(request: Request) -> dict[str, object]:
+        current_settings = load_settings(app.state.config_path)
+        _require_lan_admin(request, current_settings)
+        result = pihole_control.enable_blocking()
+        if not result.ok:
+            raise HTTPException(status_code=500, detail=result.stderr or result.stdout or "Enable failed")
+        status = pihole_control.read_status(pihole_dir=current_settings.paths.pihole_dir)
+        return {"result": result.to_dict(), "status": status.to_dict()}
+
+    @app.post("/api/pihole/disable")
+    def pihole_disable(request: Request, payload: PiholeDisableRequest) -> dict[str, object]:
+        current_settings = load_settings(app.state.config_path)
+        _require_lan_admin(request, current_settings)
+        try:
+            result = pihole_control.disable_blocking(payload.duration)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if not result.ok:
+            raise HTTPException(status_code=500, detail=result.stderr or result.stdout or "Disable failed")
+        status = pihole_control.read_status(pihole_dir=current_settings.paths.pihole_dir)
+        return {"result": result.to_dict(), "status": status.to_dict()}
+
+    @app.post("/api/pihole/gravity")
+    def pihole_gravity(request: Request, payload: PiholeGravityRequest) -> dict[str, object]:
+        current_settings = load_settings(app.state.config_path)
+        _require_lan_admin(request, current_settings)
+        result = pihole_control.update_gravity(force=payload.force)
+        if not result.ok:
+            raise HTTPException(status_code=500, detail=result.stderr or result.stdout or "Gravity update failed")
+        reader = PiholeStateReader(current_settings.pihole.gravity_db, current_settings.paths.pihole_dir)
+        return {"result": result.to_dict(), "summary": reader.summary().to_dict()}
+
+    @app.post("/api/pihole/reload")
+    def pihole_reload(request: Request) -> dict[str, object]:
+        current_settings = load_settings(app.state.config_path)
+        _require_lan_admin(request, current_settings)
+        result = pihole_control.reload_dns()
+        if not result.ok:
+            raise HTTPException(status_code=500, detail=result.stderr or result.stdout or "Reload failed")
+        return {"result": result.to_dict()}
+
+    @app.post("/api/pihole/flush")
+    def pihole_flush(request: Request) -> dict[str, object]:
+        current_settings = load_settings(app.state.config_path)
+        _require_lan_admin(request, current_settings)
+        result = pihole_control.flush_log()
+        if not result.ok:
+            raise HTTPException(status_code=500, detail=result.stderr or result.stdout or "Flush failed")
+        return {"result": result.to_dict()}
+
+    @app.post("/api/pihole/allow")
+    def pihole_allow(request: Request, payload: PiholeDomainRequest) -> dict[str, object]:
+        current_settings = load_settings(app.state.config_path)
+        _require_lan_admin(request, current_settings)
+        try:
+            if payload.action == "remove":
+                result = pihole_control.remove_allow_domains([payload.domain])
+            else:
+                result = pihole_control.allow_domains([payload.domain])
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if not result.ok:
+            raise HTTPException(status_code=500, detail=result.stderr or result.stdout or "Allowlist update failed")
+        return {"result": result.to_dict()}
+
+    @app.post("/api/pihole/deny")
+    def pihole_deny(request: Request, payload: PiholeDomainRequest) -> dict[str, object]:
+        current_settings = load_settings(app.state.config_path)
+        _require_lan_admin(request, current_settings)
+        try:
+            if payload.action == "remove":
+                result = pihole_control.remove_deny_domains([payload.domain])
+            else:
+                result = pihole_control.deny_domains([payload.domain])
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if not result.ok:
+            raise HTTPException(status_code=500, detail=result.stderr or result.stdout or "Denylist update failed")
+        return {"result": result.to_dict()}
 
     @app.get("/api/activity/live")
     def live_activity(

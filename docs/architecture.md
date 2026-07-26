@@ -2,7 +2,7 @@
 
 ## Product Goal
 
-Transform an existing Pi-hole appliance into a robust family network-control device that preserves existing blocklists, allowlists, and Pi-hole behavior while adding per-device policy management, transparent network control, clear observability, and an approachable dashboard.
+Ship a single family network-control appliance: Pi-Circle as the primary GUI and control plane, with Pi-hole installed or reused as the credited DNS engine for blocklists, allowlists, gravity, and query intel — plus per-device policy, transparent network control, and observability.
 
 ## Core Principles
 

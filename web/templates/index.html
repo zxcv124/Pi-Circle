@@ -7,10 +7,20 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Antonio:wght@400;500;600;700&family=Share+Tech+Mono&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Antonio:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&family=Share+Tech+Mono&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/static/app.css?v=20260726-powerhouse" />
+    <link rel="stylesheet" href="/static/app.css?v=20260726-merged" />
+    <script>
+      (function () {
+        try {
+          var theme = localStorage.getItem("pi-circle-theme") || "lcars";
+          document.documentElement.setAttribute("data-theme", theme);
+        } catch (e) {
+          document.documentElement.setAttribute("data-theme", "lcars");
+        }
+      })();
+    </script>
   </head>
   <body>
     <div class="lcars-frame">
@@ -28,14 +38,20 @@
         <header class="lcars-header">
           <div class="brand-stack">
             <p class="brand-mark">Pi-Circle</p>
-            <p class="brand-sub">Family Network Command</p>
+            <p class="brand-sub">Family Network Command · powered by Pi-hole</p>
           </div>
           <div class="header-bars" aria-hidden="true">
             <span class="bar bar-long"></span>
             <span class="bar bar-mid"></span>
             <span class="bar bar-short"></span>
           </div>
-          <div class="health-pill" id="health-pill">SCANNING</div>
+          <div class="header-tools">
+            <div class="theme-switch" role="group" aria-label="Theme">
+              <button class="theme-button active" type="button" data-theme-set="lcars" title="Command theme">LCARS</button>
+              <button class="theme-button" type="button" data-theme-set="stitch" title="NetSight Stitch theme">Stitch</button>
+            </div>
+            <div class="health-pill" id="health-pill">SCANNING</div>
+          </div>
         </header>
 
         <div id="setup-banner" class="setup-banner hidden" role="region" aria-label="Setup"></div>
@@ -202,15 +218,17 @@
         <section class="dns-panel hidden" id="dns-panel" aria-label="DNS and Pi-hole">
           <div class="panel-cap">
             <div>
-              <p class="eyebrow">Pi-hole inside Pi-Circle</p>
+              <p class="eyebrow">Unified appliance</p>
               <h1>DNS Powerhouse</h1>
             </div>
             <div class="cap-right">
-              <a class="primary-button compact" id="pihole-admin-link" href="/admin/" target="_blank" rel="noopener">Open Pi-hole Admin</a>
+              <button class="primary-button compact" type="button" id="pihole-settings-button">Pi-hole Settings</button>
             </div>
           </div>
           <p class="device-card-meta dns-lead">
-            Pi-Circle is the main console. Blocking, gravity, and query intel come from the Pi-hole engine on this same device.
+            Pi-Circle is the main console. DNS blocking is powered by
+            <a href="https://pi-hole.net/" target="_blank" rel="noopener noreferrer">Pi-hole</a>
+            on this same device — installed and managed as one appliance.
           </p>
           <div class="stats-strip" id="dns-stats-strip" aria-label="Pi-hole stats"></div>
           <div class="dns-grid">
@@ -230,6 +248,68 @@
             <li>Privacy shield against DoH / telemetry bypass</li>
             <li>On-path bandwidth and live flows for linked devices</li>
           </ul>
+        </section>
+
+        <section class="pihole-panel hidden" id="pihole-panel" aria-label="Pi-hole control dashboard">
+          <div class="panel-cap">
+            <div>
+              <p class="eyebrow">DNS engine · Pi-hole</p>
+              <h1>Pi-hole Control</h1>
+            </div>
+            <div class="cap-right">
+              <button class="secondary-button compact" type="button" id="pihole-back">Back to DNS</button>
+            </div>
+          </div>
+          <p class="device-card-meta dns-lead">
+            Custom Pi-Circle controls for the Pi-hole engine. Credit:
+            <a href="https://pi-hole.net/" target="_blank" rel="noopener noreferrer">pi-hole.net</a>
+          </p>
+          <div class="stats-strip" id="pihole-status-strip" aria-label="Pi-hole status"></div>
+          <div class="pihole-control-grid">
+            <section class="pihole-card">
+              <div class="section-title"><h2>Blocking</h2></div>
+              <p class="device-card-meta" id="pihole-blocking-label">Checking status…</p>
+              <div class="action-row compact-actions">
+                <button class="primary-button" type="button" id="pihole-enable">Enable</button>
+                <button class="danger-button" type="button" id="pihole-disable">Disable</button>
+              </div>
+              <div class="pihole-inline-form">
+                <label class="field-label" for="pihole-disable-duration">Temp disable</label>
+                <select class="type-select" id="pihole-disable-duration">
+                  <option value="">Until re-enabled</option>
+                  <option value="30s">30 seconds</option>
+                  <option value="5m">5 minutes</option>
+                  <option value="15m">15 minutes</option>
+                  <option value="1h">1 hour</option>
+                </select>
+                <button class="secondary-button compact" type="button" id="pihole-disable-temp">Apply temp</button>
+              </div>
+            </section>
+            <section class="pihole-card">
+              <div class="section-title"><h2>Maintenance</h2></div>
+              <div class="action-row compact-actions">
+                <button class="primary-button" type="button" id="pihole-gravity">Update gravity</button>
+                <button class="secondary-button" type="button" id="pihole-reload">Reload DNS</button>
+                <button class="secondary-button" type="button" id="pihole-flush">Flush log</button>
+              </div>
+              <p class="device-card-meta">Gravity refreshes blocklists. Reload applies list changes without a full restart.</p>
+            </section>
+            <section class="pihole-card pihole-card-wide">
+              <div class="section-title"><h2>Domain rules</h2></div>
+              <div class="pihole-inline-form">
+                <input class="name-input" id="pihole-domain-input" type="text" placeholder="example.com" autocomplete="off" />
+                <button class="primary-button compact" type="button" id="pihole-allow">Allow</button>
+                <button class="danger-button compact" type="button" id="pihole-deny">Deny</button>
+                <button class="secondary-button compact" type="button" id="pihole-allow-remove">Remove allow</button>
+                <button class="secondary-button compact" type="button" id="pihole-deny-remove">Remove deny</button>
+              </div>
+            </section>
+          </div>
+          <pre class="pihole-console" id="pihole-console" aria-live="polite"></pre>
+          <p class="device-card-meta">
+            Need the classic interface?
+            <a id="pihole-admin-link" href="/admin/" target="_blank" rel="noopener">Open original Pi-hole admin</a>
+          </p>
         </section>
 
         <section class="alerts-panel hidden" id="alerts-panel">
@@ -282,6 +362,8 @@
           <p class="footer-credit">
             Made by Yahya ·
             <a href="https://instagram.com/914ix" target="_blank" rel="noopener noreferrer">@914ix on Instagram</a>
+            · DNS engine by
+            <a href="https://pi-hole.net/" target="_blank" rel="noopener noreferrer">Pi-hole</a>
           </p>
         </footer>
       </div>

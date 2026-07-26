@@ -22,6 +22,8 @@ const state = {
   alerts: [],
   unackedAlerts: 0,
   setup: null,
+  piholeStatus: null,
+  theme: "lcars",
 };
 
 const DEVICE_TYPES = [
@@ -56,7 +58,26 @@ const elements = {
   dnsStatsStrip: document.querySelector("#dns-stats-strip"),
   dnsEngine: document.querySelector("#dns-engine"),
   dnsProtection: document.querySelector("#dns-protection"),
+  piholePanel: document.querySelector("#pihole-panel"),
+  piholeSettingsButton: document.querySelector("#pihole-settings-button"),
+  piholeBack: document.querySelector("#pihole-back"),
   piholeAdminLink: document.querySelector("#pihole-admin-link"),
+  piholeStatusStrip: document.querySelector("#pihole-status-strip"),
+  piholeBlockingLabel: document.querySelector("#pihole-blocking-label"),
+  piholeConsole: document.querySelector("#pihole-console"),
+  piholeEnable: document.querySelector("#pihole-enable"),
+  piholeDisable: document.querySelector("#pihole-disable"),
+  piholeDisableTemp: document.querySelector("#pihole-disable-temp"),
+  piholeDisableDuration: document.querySelector("#pihole-disable-duration"),
+  piholeGravity: document.querySelector("#pihole-gravity"),
+  piholeReload: document.querySelector("#pihole-reload"),
+  piholeFlush: document.querySelector("#pihole-flush"),
+  piholeDomainInput: document.querySelector("#pihole-domain-input"),
+  piholeAllow: document.querySelector("#pihole-allow"),
+  piholeDeny: document.querySelector("#pihole-deny"),
+  piholeAllowRemove: document.querySelector("#pihole-allow-remove"),
+  piholeDenyRemove: document.querySelector("#pihole-deny-remove"),
+  themeButtons: Array.from(document.querySelectorAll("[data-theme-set]")),
   deviceGrid: document.querySelector("#device-grid"),
   profileList: document.querySelector("#profile-list"),
   refresh: document.querySelector("#refresh-button"),
@@ -133,7 +154,23 @@ elements.historyWindowToggle?.querySelectorAll("[data-history-window]").forEach(
     loadHistory();
   });
 });
+elements.piholeSettingsButton?.addEventListener("click", () => activateTab("pihole"));
+elements.piholeBack?.addEventListener("click", () => activateTab("dns"));
+elements.piholeEnable?.addEventListener("click", () => runPiholeAction("enable"));
+elements.piholeDisable?.addEventListener("click", () => runPiholeAction("disable"));
+elements.piholeDisableTemp?.addEventListener("click", () => runPiholeAction("disable-temp"));
+elements.piholeGravity?.addEventListener("click", () => runPiholeAction("gravity"));
+elements.piholeReload?.addEventListener("click", () => runPiholeAction("reload"));
+elements.piholeFlush?.addEventListener("click", () => runPiholeAction("flush"));
+elements.piholeAllow?.addEventListener("click", () => runPiholeDomain("allow", "add"));
+elements.piholeDeny?.addEventListener("click", () => runPiholeDomain("deny", "add"));
+elements.piholeAllowRemove?.addEventListener("click", () => runPiholeDomain("allow", "remove"));
+elements.piholeDenyRemove?.addEventListener("click", () => runPiholeDomain("deny", "remove"));
+elements.themeButtons.forEach((button) => {
+  button.addEventListener("click", () => setTheme(button.dataset.themeSet || "lcars"));
+});
 window.addEventListener("hashchange", () => syncRouteFromHash());
+initTheme();
 
 async function getJson(path) {
   const response = await fetch(path, { credentials: "same-origin" });
@@ -178,6 +215,9 @@ async function refresh() {
     }
     if (state.activeTab === "alerts") {
       renderAlerts();
+    }
+    if (state.activeTab === "dns" || state.activeTab === "pihole") {
+      renderDnsPanel();
     }
     if (state.selectedIp) {
       await loadDevicePage(state.selectedIp, false);
@@ -533,6 +573,7 @@ function activateTab(target) {
   elements.homePanel?.classList.add("hidden");
   elements.activityPanel?.classList.add("hidden");
   elements.dnsPanel?.classList.add("hidden");
+  elements.piholePanel?.classList.add("hidden");
   elements.alertsPanel?.classList.add("hidden");
   elements.controlsPanel?.classList.add("hidden");
   elements.devicePage?.classList.add("hidden");
@@ -556,6 +597,15 @@ function activateTab(target) {
     elements.dnsPanel?.classList.remove("hidden");
     history.replaceState(null, "", "#dns");
     renderDnsPanel();
+  }
+  if (target === "pihole") {
+    stopDevicePolling();
+    state.selectedIp = null;
+    elements.tabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.tabTarget === "dns"));
+    elements.piholePanel?.classList.remove("hidden");
+    history.replaceState(null, "", "#pihole");
+    renderDnsPanel();
+    loadPiholeStatus();
   }
   if (target === "alerts") {
     stopDevicePolling();
@@ -1358,29 +1408,166 @@ function renderDnsPanel() {
     const host = window.location.hostname || "pi.hole";
     elements.piholeAdminLink.href = `http://${host}/admin/`;
   }
+  const blocking =
+    pihole.blocking_enabled === true ? "On" : pihole.blocking_enabled === false ? "Off" : "—";
   if (elements.dnsStatsStrip) {
     elements.dnsStatsStrip.innerHTML = [
+      metricCard("Blocking", blocking),
       metricCard("Adlists", formatNumber(pihole.enabled_adlists || pihole.enabledAdlists || 0)),
       metricCard("Gravity", formatCompact(pihole.gravity_domains || pihole.gravityDomains || 0)),
       metricCard("Domain rules", formatNumber(pihole.domainlist_entries || pihole.domainlistEntries || 0)),
-      metricCard("Mode", health.mode || state.config?.mode || "—"),
     ].join("");
   }
   if (elements.dnsEngine) {
     elements.dnsEngine.innerHTML = `
+      <div><span class="field-label">Engine</span><strong>Pi-hole</strong></div>
       <div><span class="field-label">Core</span><strong>${escapeHtml(pihole.core_version || pihole.coreVersion || "—")}</strong></div>
       <div><span class="field-label">FTL</span><strong>${escapeHtml(pihole.ftl_version || pihole.ftlVersion || "—")}</strong></div>
       <div><span class="field-label">Web</span><strong>${escapeHtml(pihole.web_version || pihole.webVersion || "—")}</strong></div>
-      <div><span class="field-label">Clients seen</span><strong>${escapeHtml(String(pihole.clients ?? "—"))}</strong></div>
     `;
   }
   if (elements.dnsProtection) {
     elements.dnsProtection.innerHTML = `
       <div><span class="field-label">Groups</span><strong>${escapeHtml(String(pihole.groups ?? "—"))}</strong></div>
+      <div><span class="field-label">Clients seen</span><strong>${escapeHtml(String(pihole.clients ?? "—"))}</strong></div>
       <div><span class="field-label">Privacy shield</span><strong>DoH + telemetry denylist</strong></div>
-      <div><span class="field-label">Linked control</span><strong>${escapeHtml(String(state.config?.arpAssistedTargets?.length || state.health?.targetCount || "—"))}</strong></div>
-      <div><span class="field-label">Primary UI</span><strong>Pi-Circle</strong></div>
+      <div><span class="field-label">Mode</span><strong>${escapeHtml(health.mode || state.config?.mode || "—")}</strong></div>
     `;
+  }
+  renderPiholeStatus();
+}
+
+function initTheme() {
+  let theme = "lcars";
+  try {
+    theme = localStorage.getItem("pi-circle-theme") || "lcars";
+  } catch (_err) {
+    theme = "lcars";
+  }
+  setTheme(theme, false);
+}
+
+function setTheme(theme, persist = true) {
+  const next = theme === "stitch" ? "stitch" : "lcars";
+  state.theme = next;
+  document.documentElement.setAttribute("data-theme", next);
+  elements.themeButtons.forEach((button) => {
+    button.classList.toggle("active", button.dataset.themeSet === next);
+  });
+  if (persist) {
+    try {
+      localStorage.setItem("pi-circle-theme", next);
+    } catch (_err) {
+      /* ignore */
+    }
+  }
+}
+
+async function loadPiholeStatus() {
+  try {
+    const status = await getJson("/api/pihole/status");
+    state.piholeStatus = status;
+    if (state.pihole) {
+      state.pihole.blocking_enabled = status.blocking_enabled;
+      state.pihole.ftl_listening = status.ftl_listening;
+      state.pihole.installed = status.installed;
+    }
+    renderPiholeStatus();
+  } catch (error) {
+    appendPiholeConsole(`Status error: ${error.message}`);
+  }
+}
+
+function renderPiholeStatus() {
+  const status = state.piholeStatus || {};
+  const pihole = state.pihole || {};
+  const blocking =
+    status.blocking_enabled === true || pihole.blocking_enabled === true
+      ? "Enabled"
+      : status.blocking_enabled === false || pihole.blocking_enabled === false
+        ? "Disabled"
+        : "Unknown";
+  const listening =
+    status.ftl_listening === true || pihole.ftl_listening === true
+      ? "Listening"
+      : status.ftl_listening === false || pihole.ftl_listening === false
+        ? "Down"
+        : "—";
+  if (elements.piholeStatusStrip) {
+    elements.piholeStatusStrip.innerHTML = [
+      metricCard("Blocking", blocking),
+      metricCard("FTL", listening),
+      metricCard("Adlists", formatNumber(pihole.enabled_adlists || 0)),
+      metricCard("Gravity", formatCompact(pihole.gravity_domains || 0)),
+    ].join("");
+  }
+  if (elements.piholeBlockingLabel) {
+    elements.piholeBlockingLabel.textContent = `Pi-hole blocking is ${blocking.toLowerCase()}. Engine credit: Pi-hole.`;
+  }
+}
+
+function appendPiholeConsole(message) {
+  if (!elements.piholeConsole) return;
+  const stamp = new Date().toLocaleTimeString();
+  const line = `[${stamp}] ${message}`;
+  const current = elements.piholeConsole.textContent.trim();
+  elements.piholeConsole.textContent = current ? `${current}\n${line}` : line;
+  elements.piholeConsole.scrollTop = elements.piholeConsole.scrollHeight;
+}
+
+async function runPiholeAction(action) {
+  if (state.busy) return;
+  state.busy = true;
+  try {
+    let path = "";
+    let body = {};
+    if (action === "enable") path = "/api/pihole/enable";
+    if (action === "disable") path = "/api/pihole/disable";
+    if (action === "disable-temp") {
+      path = "/api/pihole/disable";
+      body = { duration: elements.piholeDisableDuration?.value || "" };
+    }
+    if (action === "gravity") {
+      path = "/api/pihole/gravity";
+      body = { force: false };
+    }
+    if (action === "reload") path = "/api/pihole/reload";
+    if (action === "flush") path = "/api/pihole/flush";
+    showStatus(`Running Pi-hole ${action}…`, "info");
+    const payload = await postJson(path, body);
+    appendPiholeConsole(payload.result?.stdout || payload.result?.stderr || `${action} ok`);
+    if (payload.status) state.piholeStatus = payload.status;
+    await refresh();
+    await loadPiholeStatus();
+    showStatus(`Pi-hole ${action} complete`, "good");
+  } catch (error) {
+    appendPiholeConsole(`Error: ${error.message}`);
+    showStatus(error.message, "bad");
+  } finally {
+    state.busy = false;
+  }
+}
+
+async function runPiholeDomain(kind, action) {
+  if (state.busy) return;
+  const domain = (elements.piholeDomainInput?.value || "").trim();
+  if (!domain) {
+    showStatus("Enter a domain first", "bad");
+    return;
+  }
+  state.busy = true;
+  try {
+    const path = kind === "allow" ? "/api/pihole/allow" : "/api/pihole/deny";
+    const payload = await postJson(path, { domain, action });
+    appendPiholeConsole(payload.result?.stdout || `${kind} ${action}: ${domain}`);
+    elements.piholeDomainInput.value = "";
+    await refresh();
+    showStatus(`Updated ${kind}list for ${domain}`, "good");
+  } catch (error) {
+    appendPiholeConsole(`Error: ${error.message}`);
+    showStatus(error.message, "bad");
+  } finally {
+    state.busy = false;
   }
 }
 
@@ -1396,6 +1583,10 @@ function syncRouteFromHash() {
   }
   if (hash === "dns") {
     activateTab("dns");
+    return;
+  }
+  if (hash === "pihole") {
+    activateTab("pihole");
     return;
   }
   if (hash === "alerts") {

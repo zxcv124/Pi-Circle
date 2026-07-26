@@ -1923,4 +1923,243 @@ h1 {
   .site-footer {
     flex-direction: column;
   }
+
+  .header-tools {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .pihole-inline-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+.header-tools {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.theme-switch {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel) 80%, transparent);
+}
+
+.theme-button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.theme-button.active {
+  background: var(--amber);
+  color: #111;
+}
+
+.pihole-control-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.pihole-card {
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--line) 40%, transparent);
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+}
+
+.pihole-card-wide {
+  grid-column: 1 / -1;
+}
+
+.pihole-inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.pihole-console {
+  margin-top: 18px;
+  min-height: 96px;
+  max-height: 220px;
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--line) 35%, transparent);
+  background: #050505;
+  color: var(--good);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 900px) {
+  .pihole-control-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Stitch / NetSight Cyber-Modern theme (from Stitch design system) */
+html[data-theme="stitch"] {
+  color-scheme: dark;
+  --bg: #13121b;
+  --panel: #1f1f28;
+  --text: #e4e1ee;
+  --muted: #c7c4d8;
+  --amber: #c3c0ff;
+  --peach: #4cd7f6;
+  --salmon: #ffb695;
+  --violet: #4f46e5;
+  --lilac: #03b5d3;
+  --good: #4cd7f6;
+  --warn: #ffb695;
+  --bad: #ffb4ab;
+  --line: #4f46e5;
+  --font-display: "Inter", "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "Courier New", monospace;
+  --radius: 14px;
+  --glow: 0 0 24px color-mix(in srgb, #4cd7f6 28%, transparent);
+}
+
+html[data-theme="stitch"] body {
+  background:
+    radial-gradient(1200px 600px at 10% -10%, color-mix(in srgb, #4f46e5 35%, transparent), transparent 55%),
+    radial-gradient(900px 500px at 90% 0%, color-mix(in srgb, #03b5d3 22%, transparent), transparent 50%),
+    var(--bg);
+}
+
+html[data-theme="stitch"] .lcars-frame {
+  grid-template-columns: 1fr;
+}
+
+html[data-theme="stitch"] .lcars-rail {
+  display: none;
+}
+
+html[data-theme="stitch"] .lcars-main {
+  padding: 20px 20px 28px;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+html[data-theme="stitch"] .lcars-header {
+  border: 1px solid color-mix(in srgb, var(--outline, #464555) 80%, transparent);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  background: color-mix(in srgb, var(--panel) 78%, transparent);
+  backdrop-filter: blur(16px);
+  box-shadow: var(--glow);
+}
+
+html[data-theme="stitch"] .header-bars {
+  display: none;
+}
+
+html[data-theme="stitch"] .brand-mark {
+  letter-spacing: -0.02em;
+  text-transform: none;
+}
+
+html[data-theme="stitch"] .brand-sub {
+  text-transform: none;
+  letter-spacing: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+html[data-theme="stitch"] .lcars-tabs {
+  gap: 8px;
+  border: 0;
+}
+
+html[data-theme="stitch"] .tab {
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, #464555 90%, transparent);
+  background: color-mix(in srgb, #1b1b24 90%, transparent);
+  color: var(--muted);
+}
+
+html[data-theme="stitch"] .tab.active {
+  background: linear-gradient(135deg, #4f46e5, #03b5d3);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: var(--glow);
+}
+
+html[data-theme="stitch"] .primary-button,
+html[data-theme="stitch"] .secondary-button,
+html[data-theme="stitch"] .danger-button {
+  border-radius: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+  font-family: var(--font-display);
+}
+
+html[data-theme="stitch"] .primary-button {
+  background: linear-gradient(135deg, #4f46e5, #3323cc);
+  color: #fff;
+  box-shadow: 0 0 18px color-mix(in srgb, #4f46e5 40%, transparent);
+}
+
+html[data-theme="stitch"] .secondary-button {
+  background: color-mix(in srgb, #2a2933 92%, transparent);
+  border: 1px solid #464555;
+  color: var(--text);
+}
+
+html[data-theme="stitch"] .device-card,
+html[data-theme="stitch"] .metric,
+html[data-theme="stitch"] .chart-panel,
+html[data-theme="stitch"] .pihole-card,
+html[data-theme="stitch"] .activity-main,
+html[data-theme="stitch"] .activity-side {
+  border-radius: var(--radius);
+  border: 1px solid color-mix(in srgb, #464555 85%, transparent);
+  background: color-mix(in srgb, #1f1f28 86%, transparent);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+}
+
+html[data-theme="stitch"] .health-pill,
+html[data-theme="stitch"] .theme-switch,
+html[data-theme="stitch"] .live-pulse {
+  border-radius: 999px;
+}
+
+html[data-theme="stitch"] .theme-button.active {
+  background: linear-gradient(135deg, #4f46e5, #03b5d3);
+  color: #fff;
+}
+
+html[data-theme="stitch"] .pihole-console {
+  border-radius: var(--radius);
+  background: #0e0d16;
+  color: #4cd7f6;
+  border-color: #464555;
+}
+
+html[data-theme="stitch"] .site-footer {
+  border-top-color: color-mix(in srgb, #4f46e5 45%, transparent);
+}
+
+html[data-theme="stitch"] h1,
+html[data-theme="stitch"] h2 {
+  letter-spacing: -0.01em;
+  text-transform: none;
 }
