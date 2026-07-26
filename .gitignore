@@ -1,0 +1,11 @@
+artifacts/
+.venv*/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+*.egg-info/
+dist/
+build/
+backups/pihole/files/*.db
+backups/pihole/**/*FTL*

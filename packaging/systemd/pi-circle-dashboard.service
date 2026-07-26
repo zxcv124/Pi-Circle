@@ -1,0 +1,28 @@
+[Unit]
+Description=Pi-Circle dashboard
+After=network-online.target pi-circle-agent.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi-circle
+Group=pi-circle
+SupplementaryGroups=pihole
+UMask=0007
+Environment=PYTHONUNBUFFERED=1
+Environment=PI_CIRCLE_WEB_DIR=/opt/pi-circle/current/web
+ExecStart=/opt/pi-circle/venv/bin/pi-circle-dashboard --config /etc/pi-circle/config.toml
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=false
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/pi-circle /var/log/pi-circle /run /etc/pi-circle
+ReadOnlyPaths=/etc/pihole
+# Needed to list on-path L4 flows via `conntrack -L` for linked devices.
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW
+
+[Install]
+WantedBy=multi-user.target

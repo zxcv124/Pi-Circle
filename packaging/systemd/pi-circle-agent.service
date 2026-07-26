@@ -1,0 +1,26 @@
+[Unit]
+Description=Pi-Circle network-control agent
+After=network-online.target pihole-FTL.service nftables.service
+Wants=network-online.target nftables.service
+
+[Service]
+Type=simple
+User=root
+Group=pi-circle
+SupplementaryGroups=pihole
+UMask=0007
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/pi-circle/venv/bin/pi-circle-agent --config /etc/pi-circle/config.toml --interval 5
+# Agent already tears down ARP on SIGTERM; full rollback on every restart was wiping live control.
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=false
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/etc/pi-circle /var/lib/pi-circle /var/log/pi-circle /run /proc/sys/net/ipv4
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_KILL CAP_SETGID CAP_SETUID
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW
+
+[Install]
+WantedBy=multi-user.target

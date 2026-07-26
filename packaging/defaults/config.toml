@@ -1,0 +1,52 @@
+[paths]
+state_dir = "/var/lib/pi-circle"
+log_dir = "/var/log/pi-circle"
+pihole_dir = "/etc/pihole"
+database = "/var/lib/pi-circle/pi-circle.db"
+audit_log = "/var/log/pi-circle/audit.jsonl"
+
+[network]
+mode = "dns_only"
+interface = "wlan0"
+lan_cidr = "192.168.1.0/24"
+gateway_ip = "192.168.1.1"
+enable_ipv4_forwarding = false
+dns_redirect_port_53 = false
+arp_assisted_enabled = false
+arp_assisted_targets = []
+unmanaged_ips = []
+# Linked-device safeguards against DNS bypass / unsolicited inbound
+block_quic_for_linked = true
+block_wan_inbound_for_linked = true
+
+[privacy]
+enabled = true
+# strict=true also blocks Facebook graph + some Google promo/check-in hosts (may break apps)
+strict = false
+sync_pihole_denylist = true
+alert_on_hits = true
+
+[discovery]
+use_nmap = true
+# Automatically Link (ARP-assisted) every identified Android on the LAN
+auto_link_android = true
+nmap_interval_seconds = 900
+nmap_max_hosts = 8
+
+[dashboard]
+host = "0.0.0.0"
+port = 8088
+trusted_proxy_cidrs = []
+
+[security]
+require_lan_admin = true
+session_minutes = 480
+audit_retention_days = 180
+# Optional: Slack/Discord/compatible webhook for new alerts
+alert_webhook_url = ""
+
+[pihole]
+api_base_url = "http://127.0.0.1/api"
+config_path = "/etc/pihole/pihole.toml"
+gravity_db = "/etc/pihole/gravity.db"
+ftl_db = "/etc/pihole/pihole-FTL.db"

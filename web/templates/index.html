@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pi-Circle · Command</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Antonio:wght@400;500;600;700&family=Share+Tech+Mono&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/static/app.css?v=20260726-powerhouse" />
+  </head>
+  <body>
+    <div class="lcars-frame">
+      <aside class="lcars-rail" aria-hidden="true">
+        <div class="rail-block rail-top"></div>
+        <div class="rail-block rail-amber"></div>
+        <div class="rail-elbow"></div>
+        <div class="rail-block rail-peach"></div>
+        <div class="rail-block rail-violet"></div>
+        <div class="rail-block rail-tall"></div>
+        <div class="rail-block rail-bottom"></div>
+      </aside>
+
+      <div class="lcars-main">
+        <header class="lcars-header">
+          <div class="brand-stack">
+            <p class="brand-mark">Pi-Circle</p>
+            <p class="brand-sub">Family Network Command</p>
+          </div>
+          <div class="header-bars" aria-hidden="true">
+            <span class="bar bar-long"></span>
+            <span class="bar bar-mid"></span>
+            <span class="bar bar-short"></span>
+          </div>
+          <div class="health-pill" id="health-pill">SCANNING</div>
+        </header>
+
+        <div id="setup-banner" class="setup-banner hidden" role="region" aria-label="Setup"></div>
+
+        <nav class="lcars-tabs" aria-label="Primary">
+          <button class="tab active" type="button" data-tab-target="home">Devices</button>
+          <button class="tab" type="button" data-tab-target="activity">Activity</button>
+          <button class="tab" type="button" data-tab-target="dns">DNS</button>
+          <button class="tab" type="button" data-tab-target="alerts">Alerts <span class="tab-badge hidden" id="alert-badge">0</span></button>
+          <button class="tab" type="button" data-tab-target="controls">Controls</button>
+        </nav>
+
+        <div class="status-message" id="status-message" role="status" aria-live="polite"></div>
+
+        <section class="home-panel" id="home-panel">
+          <div class="panel-cap">
+            <div>
+              <p class="eyebrow">Network Directory</p>
+              <h1>Who’s On The Network</h1>
+            </div>
+            <div class="cap-right">
+              <span class="live-pulse" id="monitor-pulse">AUTO</span>
+              <p class="stardate" id="stardate">STARDATE --</p>
+            </div>
+          </div>
+
+          <div class="home-toolbar">
+            <div class="metric-strip" aria-label="Status">
+              <div class="metric compact">
+                <span class="metric-label">Mode</span>
+                <strong id="mode">—</strong>
+              </div>
+              <div class="metric compact">
+                <span class="metric-label">Online</span>
+                <strong id="device-count">0</strong>
+              </div>
+              <div class="metric compact">
+                <span class="metric-label">Linked</span>
+                <strong id="target-count">0</strong>
+              </div>
+            </div>
+            <div class="action-row compact-actions">
+              <button class="primary-button" type="button" id="refresh-button">Scan Network</button>
+              <button class="secondary-button" type="button" id="identify-button">Relabel</button>
+            </div>
+          </div>
+
+          <div id="device-grid" class="device-grid" aria-live="polite"></div>
+        </section>
+
+        <section class="activity-panel hidden" id="activity-panel">
+          <div class="panel-cap">
+            <div>
+              <p class="eyebrow">Live Monitor</p>
+              <h1>Household Traffic</h1>
+            </div>
+            <div class="cap-right">
+              <div class="window-toggle" id="history-window-toggle">
+                <button class="secondary-button compact" type="button" data-history-window="1h">1h</button>
+                <button class="secondary-button compact active-window" type="button" data-history-window="24h">24h</button>
+                <button class="secondary-button compact" type="button" data-history-window="7d">7d</button>
+              </div>
+              <p class="stardate" id="activity-window-label">Last 24 hours</p>
+            </div>
+          </div>
+
+          <div class="stats-strip" id="stats-strip" aria-label="Traffic stats"></div>
+
+          <div class="chart-panel">
+            <div class="section-title">
+              <h2>History</h2>
+              <span class="chart-legend"><span class="swatch queries"></span> DNS queries <span class="swatch blocked"></span> Blocked</span>
+            </div>
+            <div id="traffic-chart" class="traffic-chart" role="img" aria-label="Traffic history chart"></div>
+          </div>
+
+          <div class="activity-columns">
+            <section class="activity-main">
+              <div class="filter-bar">
+                <input class="name-input" id="activity-search" type="search" placeholder="Filter devices, services, domains…" />
+                <select class="type-select" id="activity-device">
+                  <option value="">All devices</option>
+                </select>
+                <select class="type-select" id="activity-category">
+                  <option value="">All categories</option>
+                  <option value="search">Search</option>
+                  <option value="video">Video</option>
+                  <option value="social">Social</option>
+                  <option value="games">Games</option>
+                  <option value="messaging">Messaging</option>
+                  <option value="ai">AI</option>
+                  <option value="shopping">Shopping</option>
+                  <option value="system">System</option>
+                </select>
+                <select class="type-select" id="activity-status">
+                  <option value="">All status</option>
+                  <option value="blocked">Blocked</option>
+                  <option value="allowed">Allowed</option>
+                  <option value="cached">Cached</option>
+                </select>
+              </div>
+              <div id="activity-feed" class="live-feed activity-feed" aria-live="polite"></div>
+            </section>
+            <aside class="activity-side">
+              <div class="section-title"><h2>Top Services</h2></div>
+              <div id="top-services" class="rank-list"></div>
+              <div class="section-title" style="margin-top: 16px"><h2>Top Devices</h2></div>
+              <div id="top-devices" class="rank-list"></div>
+              <div class="section-title" style="margin-top: 16px"><h2>Linked Bandwidth</h2></div>
+              <div id="bandwidth-list" class="rank-list"></div>
+              <div class="section-title" style="margin-top: 16px"><h2>On-path Flows</h2></div>
+              <div id="onpath-flows" class="onpath-flows"></div>
+            </aside>
+          </div>
+        </section>
+
+        <section class="device-page hidden" id="device-page" aria-label="Device page">
+          <div class="panel-cap device-page-cap">
+            <div>
+              <button class="secondary-button compact" type="button" id="device-back">← All devices</button>
+              <p class="eyebrow" id="device-page-eyebrow">Device</p>
+              <h1 id="device-page-title">Device</h1>
+            </div>
+            <div class="device-page-badges">
+              <span class="live-pulse idle" id="device-live-pulse">LIVE</span>
+              <span class="state" id="device-page-state">Observed</span>
+            </div>
+          </div>
+
+          <div class="stats-strip compact-stats" id="device-stats-strip"></div>
+          <div id="device-dns-banner" class="dns-banner hidden" role="status"></div>
+          <div class="chart-panel device-chart-panel">
+            <div class="section-title"><h2>Last 24 Hours</h2></div>
+            <div id="device-history-chart" class="traffic-chart short" role="img" aria-label="Device history chart"></div>
+            <div class="section-title" style="margin-top: 10px"><h2>Live Intensity (DNS)</h2></div>
+            <div id="device-traffic-chart" class="traffic-chart short" role="img" aria-label="Device traffic chart"></div>
+            <div class="section-title" style="margin-top: 10px"><h2>Throughput</h2></div>
+            <div id="device-bandwidth-chart" class="traffic-chart short" role="img" aria-label="Device bandwidth chart"></div>
+            <div id="device-protocol-chips" class="service-chips protocol-chips"></div>
+          </div>
+
+          <div class="device-page-layout">
+            <section class="device-page-column">
+              <div class="section-title"><h2>Live Now</h2></div>
+              <div id="device-live-feed" class="live-feed device-live-feed" aria-live="polite"></div>
+            </section>
+            <section class="device-page-column">
+              <div class="section-title"><h2>Searches</h2></div>
+              <div id="device-search-feed" class="search-feed" aria-live="polite"></div>
+              <div class="section-title" style="margin-top: 18px"><h2>Top Services</h2></div>
+              <div id="device-services" class="service-chips"></div>
+              <div class="section-title" style="margin-top: 18px"><h2>Top Remotes</h2></div>
+              <div id="device-top-remotes" class="rank-list"></div>
+              <div class="section-title" style="margin-top: 18px"><h2>Active Connections</h2></div>
+              <div id="device-connections" class="connection-list"></div>
+            </section>
+            <section class="device-page-column info-column">
+              <div class="section-title"><h2>More Info</h2></div>
+              <div id="device-info" class="device-info"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="dns-panel hidden" id="dns-panel" aria-label="DNS and Pi-hole">
+          <div class="panel-cap">
+            <div>
+              <p class="eyebrow">Pi-hole inside Pi-Circle</p>
+              <h1>DNS Powerhouse</h1>
+            </div>
+            <div class="cap-right">
+              <a class="primary-button compact" id="pihole-admin-link" href="/admin/" target="_blank" rel="noopener">Open Pi-hole Admin</a>
+            </div>
+          </div>
+          <p class="device-card-meta dns-lead">
+            Pi-Circle is the main console. Blocking, gravity, and query intel come from the Pi-hole engine on this same device.
+          </p>
+          <div class="stats-strip" id="dns-stats-strip" aria-label="Pi-hole stats"></div>
+          <div class="dns-grid">
+            <section>
+              <div class="section-title"><h2>Engine</h2></div>
+              <div id="dns-engine" class="info-grid"></div>
+            </section>
+            <section>
+              <div class="section-title"><h2>Protection</h2></div>
+              <div id="dns-protection" class="info-grid"></div>
+            </section>
+          </div>
+          <div class="section-title" style="margin-top: 18px"><h2>What Pi-Circle Adds</h2></div>
+          <ul class="dns-feature-list" id="dns-features">
+            <li>Per-device pause, bedtime, and daily limits</li>
+            <li>Auto Android discovery via nmap + auto-link</li>
+            <li>Privacy shield against DoH / telemetry bypass</li>
+            <li>On-path bandwidth and live flows for linked devices</li>
+          </ul>
+        </section>
+
+        <section class="alerts-panel hidden" id="alerts-panel">
+          <div class="panel-cap">
+            <div>
+              <p class="eyebrow">Inbox</p>
+              <h1>Household Alerts</h1>
+            </div>
+            <button class="secondary-button compact" type="button" id="ack-all-alerts">Ack all</button>
+          </div>
+          <div id="alerts-list" class="alerts-list" aria-live="polite"></div>
+        </section>
+
+        <section class="controls-panel-page hidden" id="controls-panel">
+          <div class="panel-cap">
+            <div>
+              <p class="eyebrow">Command</p>
+              <h1>Network Controls</h1>
+            </div>
+          </div>
+          <div class="controls-body">
+            <section class="metric-grid" aria-label="Status">
+              <div class="metric">
+                <span class="metric-label">Interface</span>
+                <strong id="interface">—</strong>
+              </div>
+              <div class="metric">
+                <span class="metric-label">Adlists</span>
+                <strong id="adlist-count">0</strong>
+              </div>
+              <div class="metric">
+                <span class="metric-label">Gravity</span>
+                <strong id="gravity-count">0</strong>
+              </div>
+            </section>
+            <div class="action-row" style="max-width: 420px">
+              <button class="primary-button" type="button" id="refresh-button-2">Find Devices</button>
+              <button class="danger-button" type="button" id="rollback-button">Rollback</button>
+            </div>
+            <section class="profiles-panel" aria-label="Profiles">
+              <div class="section-title"><h2>Profiles & Schedules</h2></div>
+              <p class="device-card-meta">Bedtime and daily limits apply to linked devices on that profile.</p>
+              <div id="profile-list" class="profile-list" aria-live="polite"></div>
+            </section>
+          </div>
+        </section>
+
+        <footer class="site-footer" role="contentinfo">
+          <p class="footer-brand">Pi-Circle · Family Network Command</p>
+          <p class="footer-credit">
+            Made by Yahya ·
+            <a href="https://instagram.com/914ix" target="_blank" rel="noopener noreferrer">@914ix on Instagram</a>
+          </p>
+        </footer>
+      </div>
+    </div>
+
+    <script src="/static/app.js?v=20260726-powerhouse" type="module"></script>
+  </body>
+</html>

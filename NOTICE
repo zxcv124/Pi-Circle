@@ -1,0 +1,12 @@
+Pi-Circle
+Copyright (c) 2026 Yahya (@914ix)
+
+Attribution required in all distributions and public deployments:
+  Made by Yahya — https://instagram.com/914ix
+
+This project integrates with Pi-hole (https://pi-hole.net/), which remains a
+separate project under its own license and trademarks. "Pi-hole" is used here
+only to describe compatibility with that DNS software.
+
+No Cursor, AI-vendor, or third-party corporate authorship is claimed for this
+codebase.
