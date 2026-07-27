@@ -106,6 +106,68 @@ class StorageTests(unittest.TestCase):
             self.assertEqual(profile.name, "School")
             self.assertEqual(profile.description, "School devices")
 
+    def test_access_requests_are_persisted_and_decided_once(self) -> None:
+        with TemporaryDirectory() as tmp:
+            store = Store(Path(tmp) / "state.db")
+            store.initialize()
+
+            created = store.create_access_request(
+                device_ip="192.168.4.21",
+                domain="YouTube.COM.",
+                service="YouTube",
+                reason="homework video",
+            )
+            pending = store.list_access_requests(include_decided=False)
+            decided = store.decide_access_request(int(created["id"]), decision="deny")
+
+            self.assertEqual(created["domain"], "youtube.com")
+            self.assertEqual(len(pending), 1)
+            self.assertEqual(decided["status"], "denied")
+            self.assertEqual(decided["decision"], "deny")
+            self.assertEqual(store.list_access_requests(include_decided=False), [])
+            with self.assertRaises(ValueError):
+                store.decide_access_request(int(created["id"]), decision="always_allow")
+
+    def test_community_settings_default_private_and_opt_in(self) -> None:
+        with TemporaryDirectory() as tmp:
+            store = Store(Path(tmp) / "state.db")
+            store.initialize()
+
+            initial = store.get_community_settings()
+            updated = store.update_community_settings(mode="organization", organization_name="School Lab")
+            private = store.update_community_settings(mode="private", organization_name="Ignored")
+
+            self.assertEqual(initial["mode"], "private")
+            self.assertFalse(initial["enabled"])
+            self.assertEqual(updated["mode"], "organization")
+            self.assertEqual(updated["organizationName"], "School Lab")
+            self.assertEqual(private["mode"], "private")
+            self.assertEqual(private["organizationName"], "")
+
+    def test_retention_settings_default_update_and_dry_run(self) -> None:
+        with TemporaryDirectory() as tmp:
+            store = Store(Path(tmp) / "state.db")
+            store.initialize()
+
+            initial = store.get_retention_settings()
+            updated = store.update_retention_settings(
+                detailed_activity_days=14,
+                alert_days=90,
+                health_history_days=21,
+                audit_log_days=120,
+                report_days=400,
+            )
+            summary = store.retention_summary()
+
+            self.assertEqual(initial["detailedActivityDays"], 30)
+            self.assertEqual(updated["alertDays"], 90)
+            self.assertEqual(updated["reportDays"], 400)
+            self.assertTrue(summary["dryRun"])
+            self.assertIn("wouldPrune", summary)
+            self.assertIn("Pi-hole FTL", summary["note"])
+            with self.assertRaises(ValueError):
+                store.update_retention_settings(alert_days=0)
+
     def test_store_migrates_enrolled_device_to_new_ip(self) -> None:
         with TemporaryDirectory() as tmp:
             store = Store(Path(tmp) / "state.db")

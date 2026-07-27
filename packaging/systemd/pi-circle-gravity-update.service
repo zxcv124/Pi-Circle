@@ -1,0 +1,22 @@
+[Unit]
+Description=Pi-Circle Pi-hole blocklist update
+Documentation=https://pi-hole.net/
+After=network-online.target pihole-FTL.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=pi-circle
+SupplementaryGroups=pihole
+UMask=0007
+ExecStart=/usr/local/sbin/pi-circle-pihole-ctl update-gravity
+Nice=5
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6
+NoNewPrivileges=false
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/etc/pihole /var/log/pihole /var/log/pi-circle /run
+

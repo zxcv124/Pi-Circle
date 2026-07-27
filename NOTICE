@@ -8,5 +8,5 @@ This project installs or integrates with Pi-hole (https://pi-hole.net/) as the
 DNS blocking engine. Pi-hole remains a separate project under its own license
 and trademarks. Pi-Circle credits Pi-hole in the product UI and documentation.
 
-No Cursor, AI-vendor, or third-party corporate authorship is claimed for this
-codebase.
+Authorship is Yahya (@914ix) only. No Cursor, AI vendor, or corporate
+contributor authorship is claimed or credited for this codebase.

@@ -242,6 +242,117 @@ class QueryAnalytics:
             for row in rows
         ]
 
+    def domain_evidence(
+        self,
+        *,
+        client_ip: str,
+        window_seconds: int = 300,
+        until_ts: int | None = None,
+        focus: str = "blocked",
+        limit: int = 40,
+    ) -> dict[str, object]:
+        """Top domains for a client in a time window, with blocked vs allowed counts."""
+        if not self.ftl_db.exists():
+            return {
+                "client": client_ip,
+                "windowSeconds": window_seconds,
+                "until": until_ts or int(time.time()),
+                "focus": focus,
+                "domains": [],
+                "totals": {"queries": 0, "blocked": 0, "allowed": 0, "domains": 0},
+            }
+        window_seconds = max(60, min(int(window_seconds), 86400))
+        limit = max(1, min(int(limit), 100))
+        until = int(until_ts or time.time())
+        start = until - window_seconds
+        blocked = ", ".join(str(code) for code in sorted(BLOCKED_STATUSES))
+        focus_key = (focus or "blocked").strip().lower()
+        conn = sqlite3.connect(f"file:{self.ftl_db}?mode=ro", uri=True)
+        conn.row_factory = sqlite3.Row
+        try:
+            totals_row = conn.execute(
+                f"""
+                SELECT COUNT(*) AS queries,
+                       SUM(CASE WHEN status IN ({blocked}) THEN 1 ELSE 0 END) AS blocked,
+                       COUNT(DISTINCT domain) AS domains
+                FROM queries
+                WHERE timestamp >= ? AND timestamp <= ? AND client = ?
+                """,
+                (start, until, client_ip),
+            ).fetchone()
+            having = ""
+            if focus_key == "blocked":
+                having = f"HAVING SUM(CASE WHEN status IN ({blocked}) THEN 1 ELSE 0 END) > 0"
+            elif focus_key == "allowed":
+                having = f"HAVING SUM(CASE WHEN status NOT IN ({blocked}) THEN 1 ELSE 0 END) > 0"
+            rows = conn.execute(
+                f"""
+                SELECT domain,
+                       COUNT(*) AS hits,
+                       SUM(CASE WHEN status IN ({blocked}) THEN 1 ELSE 0 END) AS blocked_hits,
+                       SUM(CASE WHEN status NOT IN ({blocked}) THEN 1 ELSE 0 END) AS allowed_hits,
+                       MAX(timestamp) AS last_seen
+                FROM queries
+                WHERE timestamp >= ? AND timestamp <= ? AND client = ?
+                  AND domain IS NOT NULL AND TRIM(domain) != ''
+                GROUP BY domain
+                {having}
+                ORDER BY
+                  CASE WHEN SUM(CASE WHEN status IN ({blocked}) THEN 1 ELSE 0 END) > 0 THEN 0 ELSE 1 END,
+                  hits DESC,
+                  domain ASC
+                LIMIT ?
+                """,
+                (start, until, client_ip, limit),
+            ).fetchall()
+        except sqlite3.Error:
+            return {
+                "client": client_ip,
+                "windowSeconds": window_seconds,
+                "until": until,
+                "focus": focus_key,
+                "domains": [],
+                "totals": {"queries": 0, "blocked": 0, "allowed": 0, "domains": 0},
+            }
+        finally:
+            conn.close()
+
+        queries = int(totals_row["queries"] or 0) if totals_row else 0
+        blocked_count = int(totals_row["blocked"] or 0) if totals_row else 0
+        domains = []
+        for row in rows:
+            blocked_hits = int(row["blocked_hits"] or 0)
+            allowed_hits = int(row["allowed_hits"] or 0)
+            domain = str(row["domain"] or "").strip().lower().rstrip(".")
+            if not domain:
+                continue
+            service, category = infer_service(domain)
+            domains.append(
+                {
+                    "domain": domain,
+                    "hits": int(row["hits"] or 0),
+                    "blockedHits": blocked_hits,
+                    "allowedHits": allowed_hits,
+                    "blocked": blocked_hits > 0,
+                    "lastSeen": int(row["last_seen"] or 0),
+                    "service": service,
+                    "category": category,
+                }
+            )
+        return {
+            "client": client_ip,
+            "windowSeconds": window_seconds,
+            "until": until,
+            "focus": focus_key,
+            "domains": domains,
+            "totals": {
+                "queries": queries,
+                "blocked": blocked_count,
+                "allowed": max(0, queries - blocked_count),
+                "domains": int(totals_row["domains"] or 0) if totals_row else 0,
+            },
+        }
+
     def _sample_rows(
         self, conn: sqlite3.Connection, start: int, client_ip: str | None, *, limit: int
     ) -> list[tuple[str, int]]:

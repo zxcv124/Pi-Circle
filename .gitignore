@@ -9,3 +9,11 @@ dist/
 build/
 backups/pihole/files/*.db
 backups/pihole/**/*FTL*
+
+# Local agent handoff / secrets — never commit or push
+HANDOFF.md
+EDIT_LOG.md
+*.handoff.md
+*credentials*
+.env
+.env.*

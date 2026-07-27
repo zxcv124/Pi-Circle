@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 import re
 import subprocess
 
 PIHOLE_CTL = Path("/usr/local/sbin/pi-circle-pihole-ctl")
+GRAVITY_UPDATE_TIMER = "pi-circle-gravity-update.timer"
+GRAVITY_UPDATE_SERVICE = "pi-circle-gravity-update.service"
 DOMAIN_RE = re.compile(r"^[A-Za-z0-9._*-]{1,253}$")
 
 
@@ -18,6 +20,7 @@ class PiholeControlStatus:
     core_version: str | None = None
     web_version: str | None = None
     ftl_version: str | None = None
+    gravity_update: dict[str, object] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -53,6 +56,7 @@ def validate_disable_duration(duration: str | None) -> str | None:
 
 def read_status(*, pihole_dir: Path | None = None) -> PiholeControlStatus:
     versions = _read_versions(pihole_dir) if pihole_dir else {}
+    gravity_update = read_gravity_update_status()
     if not _pihole_cli_available():
         return PiholeControlStatus(
             installed=False,
@@ -62,6 +66,7 @@ def read_status(*, pihole_dir: Path | None = None) -> PiholeControlStatus:
             core_version=versions.get("CORE_VERSION"),
             web_version=versions.get("WEB_VERSION"),
             ftl_version=versions.get("FTL_VERSION"),
+            gravity_update=gravity_update,
         )
 
     result = _run(["status"], timeout=30)
@@ -89,7 +94,56 @@ def read_status(*, pihole_dir: Path | None = None) -> PiholeControlStatus:
         core_version=versions.get("CORE_VERSION"),
         web_version=versions.get("WEB_VERSION"),
         ftl_version=versions.get("FTL_VERSION"),
+        gravity_update=gravity_update,
     )
+
+
+def read_gravity_update_status() -> dict[str, object]:
+    """Return systemd timer state for automatic Pi-hole list updates."""
+    timer = _systemctl_show(
+        GRAVITY_UPDATE_TIMER,
+        [
+            "LoadState",
+            "ActiveState",
+            "SubState",
+            "UnitFileState",
+            "NextElapseUSecRealtime",
+            "LastTriggerUSec",
+            "Result",
+        ],
+    )
+    service = _systemctl_show(
+        GRAVITY_UPDATE_SERVICE,
+        [
+            "LoadState",
+            "ActiveState",
+            "SubState",
+            "UnitFileState",
+            "ExecMainStatus",
+            "Result",
+            "InactiveExitTimestamp",
+        ],
+    )
+    timer_loaded = timer.get("LoadState") == "loaded"
+    service_loaded = service.get("LoadState") == "loaded"
+    return {
+        "enabled": timer.get("UnitFileState") == "enabled",
+        "active": timer.get("ActiveState") == "active",
+        "installed": timer_loaded and service_loaded,
+        "intervalHours": 48,
+        "timerUnit": GRAVITY_UPDATE_TIMER,
+        "serviceUnit": GRAVITY_UPDATE_SERVICE,
+        "nextRun": _clean_systemd_time(timer.get("NextElapseUSecRealtime"))
+        or _systemctl_list_timer_next(GRAVITY_UPDATE_TIMER),
+        "lastRun": _clean_systemd_time(timer.get("LastTriggerUSec") or service.get("InactiveExitTimestamp")),
+        "lastResult": service.get("Result") or timer.get("Result") or "unknown",
+        "lastExitStatus": _parse_int(service.get("ExecMainStatus")),
+        "detail": (
+            "Automatic Pi-hole list updates run every 48 hours."
+            if timer_loaded and service_loaded
+            else "Automatic Pi-hole list update timer is not installed."
+        ),
+    }
 
 
 def enable_blocking() -> PiholeControlResult:
@@ -195,6 +249,55 @@ def _run(args: list[str], *, timeout: int) -> PiholeControlResult:
         stderr=(completed.stderr or "").strip(),
         returncode=int(completed.returncode),
     )
+
+
+def _systemctl_show(unit: str, properties: list[str]) -> dict[str, str]:
+    command = ["systemctl", "show", unit, *[f"--property={item}" for item in properties], "--no-pager"]
+    try:
+        completed = subprocess.run(command, check=False, capture_output=True, text=True, timeout=8)
+    except (subprocess.TimeoutExpired, OSError):
+        return {}
+    if completed.returncode != 0:
+        return {}
+    values: dict[str, str] = {}
+    for line in completed.stdout.splitlines():
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        values[key] = value
+    return values
+
+
+def _systemctl_list_timer_next(unit: str) -> str | None:
+    command = ["systemctl", "list-timers", unit, "--all", "--no-legend", "--no-pager"]
+    try:
+        completed = subprocess.run(command, check=False, capture_output=True, text=True, timeout=8)
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    if completed.returncode != 0:
+        return None
+    line = completed.stdout.strip().splitlines()
+    if not line:
+        return None
+    parts = line[0].split()
+    if len(parts) < 4 or parts[0].lower() == "n/a":
+        return None
+    return " ".join(parts[:4])
+
+
+def _clean_systemd_time(value: str | None) -> str | None:
+    if not value or value in {"0", "n/a"}:
+        return None
+    return value
+
+
+def _parse_int(value: str | None) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
 
 
 def _map_direct(args: list[str]) -> list[str]:

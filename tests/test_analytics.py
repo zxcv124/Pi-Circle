@@ -52,3 +52,13 @@ class AnalyticsTests(unittest.TestCase):
             self.assertEqual(overview["totals"]["blocked"], 1)
             self.assertGreaterEqual(overview["totals"]["activeDevices"], 2)
             self.assertTrue(any(item["name"] == "YouTube" for item in overview["topServices"]))
+
+            evidence = analytics.domain_evidence(
+                client_ip="192.168.1.10",
+                window_seconds=120,
+                until_ts=now,
+                focus="blocked",
+            )
+            self.assertEqual(evidence["totals"]["blocked"], 1)
+            self.assertEqual(evidence["domains"][0]["domain"], "ads.example.com")
+            self.assertTrue(evidence["domains"][0]["blocked"])

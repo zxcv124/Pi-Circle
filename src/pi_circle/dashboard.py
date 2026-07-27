@@ -4,16 +4,19 @@ import argparse
 from datetime import datetime
 from ipaddress import ip_address
 from pathlib import Path
+import json
 import os
 import subprocess
 import time
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 import uvicorn
 
+from .api_response import failure as api_failure
+from .api_response import success as api_success
 from .analytics import QueryAnalytics
 from .bandwidth import list_active_connections, sample_device_bandwidth, summarize_flows
 from .config import DEFAULT_CONFIG_PATH, load_settings
@@ -23,7 +26,10 @@ from .inventory import sync_device_inventory
 from .pihole import PiholeQueryReader, PiholeStateReader
 from . import pihole_control
 from .policy import evaluate_all_policies, evaluate_device_policy
+from .protection_db import ProtectionDatabaseReader
+from .reports import ReportBuilder, ReportRequest
 from .setup_health import evaluate_setup
+from .system_health import capability_report, system_health
 from .storage import DEVICE_TYPES, Store
 
 
@@ -80,6 +86,34 @@ class PiholeGravityRequest(BaseModel):
     force: bool = False
 
 
+class ProtectionLookupRequest(BaseModel):
+    domain: str = Field(min_length=1, max_length=253)
+
+
+class AccessRequestCreateRequest(BaseModel):
+    device_ip: str = Field(min_length=7, max_length=45)
+    domain: str = Field(min_length=1, max_length=253)
+    service: str | None = Field(default=None, max_length=80)
+    reason: str = Field(default="", max_length=240)
+
+
+class AccessRequestDecisionRequest(BaseModel):
+    decision: str = Field(min_length=3, max_length=32)
+
+
+class CommunitySettingsRequest(BaseModel):
+    mode: str = Field(min_length=3, max_length=32)
+    organization_name: str = Field(default="", max_length=80)
+
+
+class RetentionSettingsRequest(BaseModel):
+    detailed_activity_days: int | None = Field(default=None, ge=1, le=3650)
+    alert_days: int | None = Field(default=None, ge=1, le=3650)
+    health_history_days: int | None = Field(default=None, ge=1, le=3650)
+    audit_log_days: int | None = Field(default=None, ge=1, le=3650)
+    report_days: int | None = Field(default=None, ge=1, le=3650)
+
+
 def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
     settings = load_settings(config_path)
     store = Store(settings.paths.database)
@@ -88,6 +122,7 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
     app = FastAPI(title="Pi-Circle Dashboard", version="0.1.0")
     app.state.config_path = config_path
     app.state.store = store
+    app.state.cache = {}
 
     static_dir = WEB_DIR / "static"
     if static_dir.exists():
@@ -405,6 +440,12 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
         present_ips = sync_device_inventory(current_settings, app.state.store, probe=False, full_scan=False)
         return evaluate_setup(current_settings, app.state.store, present_count=len(present_ips))
 
+    @app.get("/api/setup/capabilities")
+    def setup_capabilities(request: Request) -> dict[str, object]:
+        current_settings = load_settings(app.state.config_path)
+        _require_lan_admin(request, current_settings)
+        return _cached(app, "setup-capabilities", 10, lambda: _capability_payload(app, current_settings))
+
     @app.post("/api/arp-assisted/targets")
     def set_arp_assisted_targets(payload: TargetSetRequest, request: Request) -> dict[str, object]:
         current_settings = load_settings(app.state.config_path)
@@ -457,6 +498,7 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
                 "blocking_enabled": control.blocking_enabled,
                 "ftl_listening": control.ftl_listening,
                 "status_raw": control.raw,
+                "gravity_update": control.gravity_update,
                 "engine": "Pi-hole",
                 "credit": "DNS engine by Pi-hole (https://pi-hole.net/)",
             }
@@ -468,6 +510,256 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
         current_settings = load_settings(app.state.config_path)
         _require_lan_admin(request, current_settings)
         return pihole_control.read_status(pihole_dir=current_settings.paths.pihole_dir).to_dict()
+
+    @app.get("/api/alerts/evidence")
+    def alert_evidence(
+        request: Request,
+        client: str,
+        window: int = 300,
+        until: int | None = None,
+        focus: str = "blocked",
+        limit: int = 40,
+    ) -> dict[str, object]:
+        """Domains involved in an alert window for a device (for the alert report UI)."""
+        current_settings = load_settings(app.state.config_path)
+        _require_lan_admin(request, current_settings)
+        client_ip = _validate_lan_ip(client, current_settings)
+        analytics = QueryAnalytics(current_settings.pihole.ftl_db)
+        evidence = analytics.domain_evidence(
+            client_ip=client_ip,
+            window_seconds=window,
+            until_ts=until,
+            focus=focus,
+            limit=limit,
+        )
+        evidence["deviceName"] = _device_display_names(app.state.store).get(client_ip) or client_ip
+        return evidence
+
+    @app.get("/api/protection/database")
+    def protection_database(request: Request) -> dict[str, object]:
+        current_settings = load_settings(app.state.config_path)
+        _require_lan_admin(request, current_settings)
+        return _cached(
+            app,
+            "protection-database",
+            30,
+            lambda: {"summary": ProtectionDatabaseReader(current_settings.pihole.gravity_db).summary().to_dict()},
+        )
+
+    @app.get("/api/protection/blocklists")
+    def protection_blocklists(request: Request, limit: int = 100) -> dict[str, object]:
+        current_settings = load_settings(app.state.config_path)
+        _require_lan_admin(request, current_settings)
+        safe_limit = max(1, min(int(limit), 500))
+        return _cached(
+            app,
+            f"protection-blocklists:{safe_limit}",
+            30,
+            lambda: {"blocklists": ProtectionDatabaseReader(current_settings.pihole.gravity_db).blocklists(limit=safe_limit)},
+        )
+
+    @app.post("/api/protection/lookup")
+    def protection_lookup(request: Request, payload: ProtectionLookupRequest) -> dict[str, object]:
+        current_settings = load_settings(app.state.config_path)
+        _require_lan_admin(request, current_settings)
+        try:
+            domain = pihole_control.validate_domain(payload.domain)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        reader = ProtectionDatabaseReader(current_settings.pihole.gravity_db)
+        return {"lookup": reader.lookup(domain)}
+
+    @app.get("/api/access-requests")
+    def access_requests(request: Request, include_decided: bool = True, limit: int = 50) -> dict[str, object]:
+        current_settings = load_settings(app.state.config_path)
+        _require_lan_admin(request, current_settings)
+        return {
+            "requests": app.state.store.list_access_requests(include_decided=include_decided, limit=limit),
+            "deviceNames": _device_display_names(app.state.store),
+        }
+
+    @app.post("/api/access-requests")
+    def create_access_request(payload: AccessRequestCreateRequest, request: Request) -> dict[str, object]:
+        current_settings = load_settings(app.state.config_path)
+        _require_lan_admin(request, current_settings)
+        device_ip = _validate_lan_ip(payload.device_ip, current_settings)
+        try:
+            domain = pihole_control.validate_domain(payload.domain)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        try:
+            item = app.state.store.create_access_request(
+                device_ip=device_ip,
+                domain=domain,
+                service=payload.service,
+                reason=payload.reason,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"request": item}
+
+    @app.post("/api/access-requests/{request_id}/decision")
+    def decide_access_request(request_id: int, payload: AccessRequestDecisionRequest, request: Request) -> dict[str, object]:
+        current_settings = load_settings(app.state.config_path)
+        _require_lan_admin(request, current_settings)
+        decision = payload.decision.strip().lower()
+        if decision in {"allow_once", "allow_15m", "allow_1h"}:
+            raise HTTPException(
+                status_code=501,
+                detail=(
+                    "Temporary access requires an expiry worker before Pi-Circle can safely add and remove "
+                    "global Pi-hole allow rules."
+                ),
+            )
+        item = app.state.store.get_access_request(request_id)
+        if item is None:
+            raise HTTPException(status_code=404, detail="Access request not found")
+        result = None
+        if decision == "always_allow":
+            try:
+                result = pihole_control.allow_domains([str(item["domain"])])
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            if not result.ok:
+                raise HTTPException(status_code=500, detail=result.stderr or result.stdout or "Allowlist update failed")
+        elif decision != "deny":
+            raise HTTPException(status_code=400, detail="Unsupported access request decision")
+        try:
+            updated = app.state.store.decide_access_request(request_id, decision=decision)
+        except (LookupError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"request": updated, "result": result.to_dict() if result else None}
+
+    @app.get("/api/reports")
+    def report_summary(request: Request, period: str = "daily", privacy_level: str = "family") -> dict[str, object]:
+        current_settings = load_settings(app.state.config_path)
+        _require_lan_admin(request, current_settings)
+        return _cached(
+            app,
+            f"report:{period}:{privacy_level}",
+            15,
+            lambda: _report_payload(current_settings, app.state.store, period, privacy_level),
+        )
+
+    @app.get("/api/reports/export.csv")
+    def report_csv(request: Request, period: str = "daily", privacy_level: str = "family") -> Response:
+        current_settings = load_settings(app.state.config_path)
+        _require_lan_admin(request, current_settings)
+        report_request = ReportRequest(period=period, privacy_level=privacy_level)
+        csv_text = ReportBuilder(current_settings.pihole.ftl_db, app.state.store).csv(report_request)
+        filename = f"pi-circle-{report_request.period}-{report_request.privacy_level}.csv"
+        return Response(
+            csv_text,
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    @app.get("/api/system/health")
+    def system_health_endpoint(request: Request) -> dict[str, object]:
+        current_settings = load_settings(app.state.config_path)
+        _require_lan_admin(request, current_settings)
+        return _cached(app, "system-health", 5, lambda: {"health": system_health(current_settings)})
+
+    @app.get("/api/security/status")
+    def security_status(request: Request) -> dict[str, object]:
+        current_settings = load_settings(app.state.config_path)
+        _require_lan_admin(request, current_settings)
+        return _security_payload(current_settings)
+
+    @app.get("/api/audit")
+    def audit_events(request: Request, limit: int = 40) -> dict[str, object]:
+        current_settings = load_settings(app.state.config_path)
+        _require_lan_admin(request, current_settings)
+        return {"events": _read_audit_events(current_settings.paths.audit_log, limit=limit)}
+
+    @app.get("/api/community")
+    def community_settings(request: Request) -> dict[str, object]:
+        current_settings = load_settings(app.state.config_path)
+        _require_lan_admin(request, current_settings)
+        settings_payload = app.state.store.get_community_settings()
+        return {"settings": settings_payload, "preview": _community_preview(settings_payload)}
+
+    @app.patch("/api/community")
+    def update_community_settings(payload: CommunitySettingsRequest, request: Request) -> dict[str, object]:
+        current_settings = load_settings(app.state.config_path)
+        _require_lan_admin(request, current_settings)
+        try:
+            settings_payload = app.state.store.update_community_settings(
+                mode=payload.mode,
+                organization_name=payload.organization_name,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"settings": settings_payload, "preview": _community_preview(settings_payload)}
+
+    @app.get("/api/retention")
+    def retention_settings(request: Request) -> dict[str, object]:
+        current_settings = load_settings(app.state.config_path)
+        _require_lan_admin(request, current_settings)
+        return app.state.store.retention_summary()
+
+    @app.patch("/api/retention")
+    def update_retention_settings(payload: RetentionSettingsRequest, request: Request) -> dict[str, object]:
+        current_settings = load_settings(app.state.config_path)
+        _require_lan_admin(request, current_settings)
+        try:
+            app.state.store.update_retention_settings(
+                detailed_activity_days=payload.detailed_activity_days,
+                alert_days=payload.alert_days,
+                health_history_days=payload.health_history_days,
+                audit_log_days=payload.audit_log_days,
+                report_days=payload.report_days,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return app.state.store.retention_summary()
+
+    @app.get("/api/v1/dashboard/summary")
+    def v1_dashboard_summary(request: Request) -> dict[str, object]:
+        current_settings = load_settings(app.state.config_path)
+        _require_lan_admin(request, current_settings)
+        health_payload = _cached(app, "system-health", 5, lambda: {"health": system_health(current_settings)})
+        capabilities_payload = _cached(app, "setup-capabilities", 10, lambda: _capability_payload(app, current_settings))
+        return api_success(
+            {
+                "health": health_payload["health"],
+                "capabilities": capabilities_payload.get("capabilities", []),
+                "retention": app.state.store.retention_summary(),
+            }
+        )
+
+    @app.get("/api/v1/system/health")
+    def v1_system_health(request: Request) -> dict[str, object]:
+        current_settings = load_settings(app.state.config_path)
+        _require_lan_admin(request, current_settings)
+        return api_success(_cached(app, "system-health", 5, lambda: {"health": system_health(current_settings)})["health"])
+
+    @app.get("/api/v1/reports")
+    def v1_reports(request: Request, period: str = "daily", privacy_level: str = "family") -> dict[str, object]:
+        current_settings = load_settings(app.state.config_path)
+        _require_lan_admin(request, current_settings)
+        try:
+            payload = _cached(
+                app,
+                f"report:{period}:{privacy_level}",
+                15,
+                lambda: _report_payload(current_settings, app.state.store, period, privacy_level),
+            )
+        except ValueError as exc:
+            return api_failure("INVALID_REPORT_REQUEST", str(exc))
+        return api_success(payload["report"])
+
+    @app.get("/api/v1/security/status")
+    def v1_security_status(request: Request) -> dict[str, object]:
+        current_settings = load_settings(app.state.config_path)
+        _require_lan_admin(request, current_settings)
+        return api_success(_security_payload(current_settings)["security"])
+
+    @app.get("/api/v1/retention")
+    def v1_retention(request: Request) -> dict[str, object]:
+        current_settings = load_settings(app.state.config_path)
+        _require_lan_admin(request, current_settings)
+        return api_success(app.state.store.retention_summary())
 
     @app.post("/api/pihole/enable")
     def pihole_enable(request: Request) -> dict[str, object]:
@@ -789,6 +1081,72 @@ def _device_display_names(store: Store) -> dict[str, str]:
     return names
 
 
+def _read_audit_events(path: Path, *, limit: int) -> list[dict[str, object]]:
+    limit = max(1, min(int(limit), 100))
+    if not path.exists():
+        return []
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()[-limit:]
+    except OSError:
+        return []
+    events: list[dict[str, object]] = []
+    for line in reversed(lines):
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        events.append(_redact_audit_event(payload))
+    return events
+
+
+def _redact_audit_event(payload: dict[str, object]) -> dict[str, object]:
+    redacted = {}
+    sensitive_words = ("password", "token", "secret", "key", "authorization", "cookie")
+    for key, value in payload.items():
+        lowered = str(key).lower()
+        if any(word in lowered for word in sensitive_words):
+            redacted[key] = "[redacted]"
+        else:
+            redacted[key] = value
+    return redacted
+
+
+def _community_preview(settings_payload: dict[str, object]) -> dict[str, object]:
+    mode = str(settings_payload.get("mode") or "private")
+    enabled = mode != "private"
+    shared = (
+        [
+            {"field": "confirmedMaliciousDomain", "example": "malware-domain.example", "included": True},
+            {"field": "categoryCorrection", "example": {"domain": "example.test", "category": "phishing"}, "included": True},
+            {"field": "falsePositiveReport", "example": {"domain": "safe.example", "reason": "parent confirmed"}, "included": True},
+            {"field": "effectivenessStats", "example": {"blockedMalware": 12, "falsePositiveReports": 1}, "included": True},
+        ]
+        if enabled
+        else []
+    )
+    never = [
+        "device names",
+        "MAC addresses",
+        "local IP addresses",
+        "user identities",
+        "complete DNS histories",
+        "private network topology",
+        "administrator details",
+        "unredacted logs",
+    ]
+    return {
+        "enabled": enabled,
+        "mode": mode,
+        "destination": "none: no cloud endpoint is configured",
+        "transport": "not active",
+        "sharedFields": shared,
+        "neverShare": never,
+        "samplePayload": {"mode": mode, "events": shared} if enabled else {"mode": "private", "events": []},
+    }
+
+
 def _require_lan_admin(request: Request, settings) -> None:
     if not settings.security.require_lan_admin:
         return
@@ -842,6 +1200,45 @@ def _set_arp_targets(targets: list[str]) -> None:
     if completed.returncode != 0:
         detail = completed.stderr.strip() or completed.stdout.strip() or "Failed to apply ARP-assisted target changes"
         raise HTTPException(status_code=400, detail=detail)
+
+
+def _cached(app: FastAPI, key: str, ttl_seconds: int, producer) -> dict[str, object]:
+    now = time.monotonic()
+    cache = app.state.cache
+    cached = cache.get(key)
+    if cached and now - cached["stored_at"] < ttl_seconds:
+        return cached["value"]
+    value = producer()
+    cache[key] = {"stored_at": now, "value": value}
+    return value
+
+
+def _report_payload(settings, store: Store, period: str, privacy_level: str) -> dict[str, object]:
+    report_request = ReportRequest(period=period, privacy_level=privacy_level)
+    return {"report": ReportBuilder(settings.pihole.ftl_db, store).build(report_request)}
+
+
+def _capability_payload(app: FastAPI, settings) -> dict[str, object]:
+    present_ips = sync_device_inventory(settings, app.state.store, probe=False, full_scan=False)
+    setup = evaluate_setup(settings, app.state.store, present_count=len(present_ips))
+    return capability_report(settings, setup)
+
+
+def _security_payload(settings) -> dict[str, object]:
+    return {
+        "security": {
+            "lanAdminRequired": settings.security.require_lan_admin,
+            "sessionMinutes": settings.security.session_minutes,
+            "auditRetentionDays": settings.security.audit_retention_days,
+            "webhookConfigured": bool(settings.security.alert_webhook_url),
+            "adminRoles": "local LAN administrator gate only",
+            "knownGaps": [
+                "Password-based local administrator login is not configured yet.",
+                "Read-only viewer role is not configured yet.",
+                "CSRF tokens are not configured yet; LAN-admin source restriction is currently the active browser-side guard.",
+            ],
+        }
+    }
 
 
 def _control_response(app: FastAPI) -> dict[str, object]:

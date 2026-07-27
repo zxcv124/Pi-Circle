@@ -2,7 +2,17 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover, shrink-to-fit=no"
+    />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Pi-Circle" />
+    <meta name="application-name" content="Pi-Circle" />
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="theme-color" content="#000000" />
     <title>Pi-Circle · Command</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -10,7 +20,7 @@
       href="https://fonts.googleapis.com/css2?family=Antonio:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&family=Share+Tech+Mono&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/static/app.css?v=20260726-merged" />
+    <link rel="stylesheet" href="/static/app.css?v=20260727" />
     <script>
       (function () {
         try {
@@ -19,10 +29,25 @@
         } catch (e) {
           document.documentElement.setAttribute("data-theme", "lcars");
         }
+        function lockViewport() {
+          var meta = document.querySelector('meta[name="viewport"]');
+          if (!meta) return;
+          meta.setAttribute(
+            "content",
+            "width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover, shrink-to-fit=no"
+          );
+          document.documentElement.style.width = "100%";
+          document.body && (document.body.style.width = "100%");
+        }
+        lockViewport();
+        window.addEventListener("orientationchange", function () {
+          setTimeout(lockViewport, 50);
+        });
       })();
     </script>
   </head>
   <body>
+    <a class="skip-link" href="#app-content">Skip to main content</a>
     <div class="lcars-frame">
       <aside class="lcars-rail" aria-hidden="true">
         <div class="rail-block rail-top"></div>
@@ -35,42 +60,104 @@
       </aside>
 
       <div class="lcars-main">
-        <header class="lcars-header">
-          <div class="brand-stack">
-            <p class="brand-mark">Pi-Circle</p>
-            <p class="brand-sub">Family Network Command · powered by Pi-hole</p>
-          </div>
-          <div class="header-bars" aria-hidden="true">
-            <span class="bar bar-long"></span>
-            <span class="bar bar-mid"></span>
-            <span class="bar bar-short"></span>
-          </div>
-          <div class="header-tools">
-            <div class="theme-switch" role="group" aria-label="Theme">
-              <button class="theme-button active" type="button" data-theme-set="lcars" title="Command theme">LCARS</button>
-              <button class="theme-button" type="button" data-theme-set="stitch" title="NetSight Stitch theme">Stitch</button>
+        <div class="app-chrome">
+          <header class="lcars-header">
+            <div class="brand-stack">
+              <p class="brand-mark">Pi-Circle</p>
+              <p class="brand-sub">Family Network Command · powered by Pi-hole</p>
             </div>
-            <div class="health-pill" id="health-pill">SCANNING</div>
-          </div>
-        </header>
+            <div class="header-bars" aria-hidden="true">
+              <span class="bar bar-long"></span>
+              <span class="bar bar-mid"></span>
+              <span class="bar bar-short"></span>
+            </div>
+            <div class="header-tools">
+              <label class="global-search" for="global-search">
+                <span>Search</span>
+                <input id="global-search" type="search" placeholder="Device, service, domain…" autocomplete="off" />
+              </label>
+              <button class="mode-toggle" type="button" id="mode-toggle" aria-pressed="false">Simple</button>
+              <div class="theme-switch" role="group" aria-label="Theme">
+                <button class="theme-button active" type="button" data-theme-set="lcars" title="Cinematic LCARS theme">LCARS</button>
+                <button class="theme-button" type="button" data-theme-set="stitch" title="NetSight Stitch theme">Stitch</button>
+              </div>
+              <div class="health-pill" id="health-pill">SCANNING</div>
+            </div>
+          </header>
 
-        <div id="setup-banner" class="setup-banner hidden" role="region" aria-label="Setup"></div>
+          <div id="setup-banner" class="setup-banner hidden" role="region" aria-label="Setup"></div>
 
-        <nav class="lcars-tabs" aria-label="Primary">
-          <button class="tab active" type="button" data-tab-target="home">Devices</button>
-          <button class="tab" type="button" data-tab-target="activity">Activity</button>
-          <button class="tab" type="button" data-tab-target="dns">DNS</button>
-          <button class="tab" type="button" data-tab-target="alerts">Alerts <span class="tab-badge hidden" id="alert-badge">0</span></button>
-          <button class="tab" type="button" data-tab-target="controls">Controls</button>
-        </nav>
+          <nav class="lcars-tabs" aria-label="Primary">
+            <button class="tab active" type="button" data-tab-target="overview">Overview</button>
+            <button class="tab" type="button" data-tab-target="home">Devices</button>
+            <button class="tab" type="button" data-tab-target="activity">Live Traffic</button>
+            <button class="tab" type="button" data-tab-target="services">Services</button>
+            <button class="tab" type="button" data-tab-target="dns">Protection</button>
+            <button class="tab" type="button" data-tab-target="alerts">Alerts <span class="tab-badge hidden" id="alert-badge">0</span></button>
+            <button class="tab" type="button" data-tab-target="controls">Profiles</button>
+            <button class="tab" type="button" data-tab-target="reports">Reports</button>
+            <button class="tab" type="button" data-tab-target="system">System</button>
+            <button class="tab" type="button" data-tab-target="settings">Settings</button>
+          </nav>
+        </div>
 
+        <div class="app-scroll" id="app-content" tabindex="-1">
         <div class="status-message" id="status-message" role="status" aria-live="polite"></div>
 
-        <section class="home-panel" id="home-panel">
+        <section class="overview-panel" id="overview-panel" aria-label="Overview dashboard">
+          <div class="cinema-hero">
+            <div class="cinema-copy">
+              <p class="eyebrow">Appliance Overview</p>
+              <h1>Protection Active</h1>
+              <p class="hero-summary" id="overview-summary">Checking Pi-hole, discovery, profiles, alerts, and device visibility.</p>
+            </div>
+            <div class="cinema-orbit" aria-hidden="true">
+              <span class="orbit-ring ring-one"></span>
+              <span class="orbit-ring ring-two"></span>
+              <span class="orbit-core">Pi</span>
+            </div>
+          </div>
+
+          <div class="overview-grid">
+            <section class="overview-card status-card">
+              <div class="section-title"><h2>Protection Status</h2></div>
+              <div id="overview-status" class="status-stack"></div>
+            </section>
+            <section class="overview-card">
+              <div class="section-title"><h2>Today</h2></div>
+              <div id="overview-metrics" class="stats-strip"></div>
+            </section>
+            <section class="overview-card chart-card">
+              <div class="section-title">
+                <h2>DNS Activity</h2>
+                <span class="chart-legend"><span class="swatch queries"></span> Queries <span class="swatch blocked"></span> Blocked</span>
+              </div>
+              <div id="overview-chart" class="traffic-chart" role="img" aria-label="Overview DNS traffic chart"></div>
+            </section>
+            <section class="overview-card">
+              <div class="section-title"><h2>Top Active Devices</h2></div>
+              <div id="overview-devices" class="rank-list"></div>
+            </section>
+            <section class="overview-card">
+              <div class="section-title"><h2>Top Services</h2></div>
+              <div id="overview-services" class="service-radar"></div>
+            </section>
+            <section class="overview-card">
+              <div class="section-title"><h2>Recent Alerts</h2></div>
+              <div id="overview-alerts" class="mini-alert-list"></div>
+            </section>
+          </div>
+          <details class="technical-disclosure">
+            <summary>Technical capability notes</summary>
+            <p>DNS activity comes from Pi-hole queries. ARP discovers local devices and supports linked-device enforcement where configured. Bandwidth appears only for linked/on-path devices. HTTPS page content, messages, passwords, and videos watched are not visible.</p>
+          </details>
+        </section>
+
+        <section class="home-panel hidden" id="home-panel">
           <div class="panel-cap">
             <div>
-              <p class="eyebrow">Network Directory</p>
-              <h1>Who’s On The Network</h1>
+              <p class="eyebrow">Device Inventory</p>
+              <h1>Recognized and Unknown Devices</h1>
             </div>
             <div class="cap-right">
               <span class="live-pulse" id="monitor-pulse">AUTO</span>
@@ -100,6 +187,23 @@
           </div>
 
           <div id="device-grid" class="device-grid" aria-live="polite"></div>
+        </section>
+
+        <section class="services-panel hidden" id="services-panel" aria-label="Service insights">
+          <div class="panel-cap">
+            <div>
+              <p class="eyebrow">Domain-based estimates</p>
+              <h1>Service Insights</h1>
+            </div>
+            <div class="cap-right">
+              <span class="state linked">Estimated</span>
+            </div>
+          </div>
+          <p class="device-card-meta dns-lead">
+            Services are inferred from DNS domains and known naming patterns. Confidence labels distinguish strong matches from estimates; Pi-Circle does not inspect encrypted HTTPS content.
+          </p>
+          <div id="services-summary" class="stats-strip"></div>
+          <div id="service-grid" class="service-insight-grid"></div>
         </section>
 
         <section class="activity-panel hidden" id="activity-panel">
@@ -248,6 +352,25 @@
             <li>Privacy shield against DoH / telemetry bypass</li>
             <li>On-path bandwidth and live flows for linked devices</li>
           </ul>
+          <div class="protection-db-grid">
+            <section class="pihole-card">
+              <div class="section-title"><h2>Protection Database</h2></div>
+              <p class="device-card-meta">Pi-hole gravity stays server-side. Pi-Circle shows indexed summaries and exact lookups only.</p>
+              <div id="protection-db-summary" class="stats-strip compact-strip" aria-live="polite"></div>
+            </section>
+            <section class="pihole-card">
+              <div class="section-title"><h2>Exact Lookup</h2></div>
+              <div class="pihole-inline-form">
+                <input class="name-input" id="protection-lookup-input" type="text" placeholder="domain.example" autocomplete="off" />
+                <button class="primary-button compact" type="button" id="protection-lookup-button">Lookup</button>
+              </div>
+              <div id="protection-lookup-result" class="lookup-result"></div>
+            </section>
+            <section class="pihole-card pihole-card-wide">
+              <div class="section-title"><h2>Blocklist Sources</h2></div>
+              <div id="blocklist-table" class="blocklist-table" aria-live="polite"></div>
+            </section>
+          </div>
         </section>
 
         <section class="pihole-panel hidden" id="pihole-panel" aria-label="Pi-hole control dashboard">
@@ -318,16 +441,33 @@
               <p class="eyebrow">Inbox</p>
               <h1>Household Alerts</h1>
             </div>
-            <button class="secondary-button compact" type="button" id="ack-all-alerts">Ack all</button>
+            <button class="secondary-button compact" type="button" id="ack-all-alerts" title="Clear every alert from this inbox">Mark all as read</button>
           </div>
+          <p class="alerts-help" id="alerts-help">
+            Alerts are notices about devices and DNS. <strong>Mark as read</strong> only clears the inbox — it does not change blocking, linking, or schedules.
+          </p>
           <div id="alerts-list" class="alerts-list" aria-live="polite"></div>
+        </section>
+
+        <section class="alert-report-panel hidden" id="alert-report-panel" aria-label="Alert report">
+          <div class="panel-cap">
+            <div>
+              <button class="secondary-button compact" type="button" id="alert-report-back">← Back to alerts</button>
+              <p class="eyebrow" id="alert-report-eyebrow">Alert report</p>
+              <h1 id="alert-report-title">Alert</h1>
+            </div>
+            <div class="cap-right">
+              <span class="state" id="alert-report-severity">Info</span>
+            </div>
+          </div>
+          <div class="alert-report-body" id="alert-report-body"></div>
         </section>
 
         <section class="controls-panel-page hidden" id="controls-panel">
           <div class="panel-cap">
             <div>
-              <p class="eyebrow">Command</p>
-              <h1>Network Controls</h1>
+              <p class="eyebrow">Profiles and System</p>
+              <h1>Family Controls</h1>
             </div>
           </div>
           <div class="controls-body">
@@ -351,9 +491,82 @@
             </div>
             <section class="profiles-panel" aria-label="Profiles">
               <div class="section-title"><h2>Profiles & Schedules</h2></div>
-              <p class="device-card-meta">Bedtime and daily limits apply to linked devices on that profile.</p>
+              <p class="device-card-meta">Bedtime and daily limits apply to linked devices on that profile. DNS filtering remains Pi-hole-level unless a device is linked for gateway-assisted control.</p>
               <div id="profile-list" class="profile-list" aria-live="polite"></div>
             </section>
+            <section class="profiles-panel" aria-label="Access requests">
+              <div class="section-title"><h2>Access Requests</h2></div>
+              <p class="device-card-meta">Parent decisions are logged. “Always allow” adds a real Pi-hole allow rule; temporary access stays unavailable until expiry cleanup is enabled.</p>
+              <div class="request-create-grid">
+                <select class="type-select" id="request-device"></select>
+                <input class="name-input" id="request-domain" type="text" placeholder="blocked.example" autocomplete="off" />
+                <input class="name-input" id="request-reason" type="text" placeholder="Reason" autocomplete="off" />
+                <button class="primary-button compact" type="button" id="request-create">Add request</button>
+              </div>
+              <div id="access-request-list" class="access-request-list" aria-live="polite"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="reports-panel hidden" id="reports-panel" aria-label="Reports">
+          <div class="panel-cap">
+            <div>
+              <p class="eyebrow">Reports</p>
+              <h1>Family Reports</h1>
+            </div>
+            <div class="cap-right report-controls">
+              <select class="type-select" id="report-period" aria-label="Report period">
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+              </select>
+              <select class="type-select" id="report-privacy" aria-label="Report privacy level">
+                <option value="family">Family report</option>
+                <option value="summary">Summary only</option>
+                <option value="technical">Technical report</option>
+              </select>
+              <button class="secondary-button compact" type="button" id="report-export">Export CSV</button>
+            </div>
+          </div>
+          <p class="device-card-meta">Reports use local Pi-hole DNS and Pi-Circle alert data. Technical exports may include device IPs and raw domains.</p>
+          <div id="report-summary" class="stats-strip"></div>
+          <div class="report-grid">
+            <section class="overview-card"><div class="section-title"><h2>Services</h2></div><div id="report-services" class="rank-list"></div></section>
+            <section class="overview-card"><div class="section-title"><h2>Categories</h2></div><div id="report-categories" class="rank-list"></div></section>
+            <section class="overview-card"><div class="section-title"><h2>Alerts</h2></div><div id="report-alerts" class="rank-list"></div></section>
+            <section class="overview-card advanced-only"><div class="section-title"><h2>Technical Domains</h2></div><div id="report-domains" class="rank-list"></div></section>
+          </div>
+        </section>
+
+        <section class="system-panel hidden" id="system-panel" aria-label="System health">
+          <div class="panel-cap">
+            <div>
+              <p class="eyebrow">System</p>
+              <h1>Appliance Health</h1>
+            </div>
+            <button class="secondary-button compact" type="button" id="system-refresh">Refresh</button>
+          </div>
+          <div id="system-summary" class="stats-strip"></div>
+          <div class="system-grid">
+            <section class="overview-card"><div class="section-title"><h2>Services</h2></div><div id="system-services" class="health-list"></div></section>
+            <section class="overview-card"><div class="section-title"><h2>Resources</h2></div><div id="system-resources" class="info-grid"></div></section>
+            <section class="overview-card"><div class="section-title"><h2>Safe Actions</h2></div><div id="system-actions" class="health-list"></div></section>
+          </div>
+        </section>
+
+        <section class="settings-panel hidden" id="settings-panel" aria-label="Settings and setup">
+          <div class="panel-cap">
+            <div>
+              <p class="eyebrow">Settings</p>
+              <h1>Setup & Privacy</h1>
+            </div>
+          </div>
+          <div class="settings-grid">
+            <section class="overview-card"><div class="section-title"><h2>Capability Detection</h2></div><div id="capability-list" class="health-list"></div></section>
+            <section class="overview-card"><div class="section-title"><h2>Community Protection</h2></div><div id="community-panel" class="community-panel"></div></section>
+            <section class="overview-card"><div class="section-title"><h2>Retention</h2></div><div id="retention-panel" class="retention-panel"></div></section>
+            <section class="overview-card"><div class="section-title"><h2>Security Status</h2></div><div id="security-status" class="health-list"></div></section>
+            <section class="overview-card"><div class="section-title"><h2>Audit Log</h2></div><div id="audit-list" class="health-list"></div></section>
           </div>
         </section>
 
@@ -366,9 +579,10 @@
             <a href="https://pi-hole.net/" target="_blank" rel="noopener noreferrer">Pi-hole</a>
           </p>
         </footer>
+        </div>
       </div>
     </div>
 
-    <script src="/static/app.js?v=20260726-powerhouse" type="module"></script>
+    <script src="/static/app.js?v=20260727" type="module"></script>
   </body>
 </html>

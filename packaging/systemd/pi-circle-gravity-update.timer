@@ -1,0 +1,13 @@
+[Unit]
+Description=Run Pi-Circle Pi-hole blocklist updates every 48 hours
+
+[Timer]
+OnBootSec=20min
+OnUnitActiveSec=48h
+AccuracySec=1h
+RandomizedDelaySec=15min
+Persistent=true
+Unit=pi-circle-gravity-update.service
+
+[Install]
+WantedBy=timers.target

@@ -90,6 +90,38 @@ CREATE TABLE IF NOT EXISTS alerts (
 );
 CREATE INDEX IF NOT EXISTS idx_alerts_created ON alerts(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_alerts_type_subject ON alerts(alert_type, subject, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS access_requests (
+  id INTEGER PRIMARY KEY,
+  device_ip TEXT NOT NULL,
+  domain TEXT NOT NULL,
+  service TEXT,
+  reason TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'pending',
+  decision TEXT,
+  created_at TEXT NOT NULL,
+  decided_at TEXT,
+  expires_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_access_requests_status_created
+  ON access_requests(status, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS community_settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  mode TEXT NOT NULL DEFAULT 'private',
+  organization_name TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS retention_settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  detailed_activity_days INTEGER NOT NULL DEFAULT 30,
+  alert_days INTEGER NOT NULL DEFAULT 180,
+  health_history_days INTEGER NOT NULL DEFAULT 30,
+  audit_log_days INTEGER NOT NULL DEFAULT 180,
+  report_days INTEGER NOT NULL DEFAULT 365,
+  updated_at TEXT NOT NULL
+);
 """
 
 
@@ -144,7 +176,37 @@ class Store:
             _ensure_column(conn, "devices", "device_type", "TEXT NOT NULL DEFAULT 'unknown'")
             _ensure_column(conn, "devices", "vendor", "TEXT")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_devices_mac_address ON devices(mac_address)")
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_access_requests_device_created
+                  ON access_requests(device_ip, created_at DESC)
+                """
+            )
             now = _now()
+            conn.execute(
+                """
+                INSERT INTO community_settings(id, mode, organization_name, updated_at)
+                VALUES(1, 'private', '', ?)
+                ON CONFLICT(id) DO NOTHING
+                """,
+                (now,),
+            )
+            conn.execute(
+                """
+                INSERT INTO retention_settings(
+                    id,
+                    detailed_activity_days,
+                    alert_days,
+                    health_history_days,
+                    audit_log_days,
+                    report_days,
+                    updated_at
+                )
+                VALUES(1, 30, 180, 30, 180, 365, ?)
+                ON CONFLICT(id) DO NOTHING
+                """,
+                (now,),
+            )
             for name, description, bedtime_start, bedtime_end, daily_minutes in DEFAULT_PROFILES:
                 conn.execute(
                     """
@@ -964,6 +1026,223 @@ class Store:
                 return True
         return False
 
+    def create_access_request(
+        self,
+        *,
+        device_ip: str,
+        domain: str,
+        service: str | None = None,
+        reason: str = "",
+    ) -> dict[str, object]:
+        normalized_domain = domain.strip().lower().rstrip(".")
+        normalized_reason = reason.strip()
+        if not normalized_domain:
+            raise ValueError("Domain is required")
+        if len(normalized_reason) > 240:
+            raise ValueError("Reason must be 240 characters or fewer")
+        now = _now()
+        with self.connect() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO access_requests(device_ip, domain, service, reason, status, created_at)
+                VALUES(?, ?, ?, ?, 'pending', ?)
+                """,
+                (device_ip, normalized_domain, (service or "").strip() or None, normalized_reason, now),
+            )
+            request_id = int(cursor.lastrowid)
+        return self.get_access_request(request_id) or {}
+
+    def get_access_request(self, request_id: int) -> dict[str, object] | None:
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT id, device_ip, domain, service, reason, status, decision, created_at, decided_at, expires_at
+                FROM access_requests
+                WHERE id = ?
+                """,
+                (request_id,),
+            ).fetchone()
+        return _serialize_access_request(row) if row else None
+
+    def list_access_requests(self, *, include_decided: bool = False, limit: int = 50) -> list[dict[str, object]]:
+        limit = max(1, min(int(limit), 100))
+        with self.connect() as conn:
+            if include_decided:
+                rows = conn.execute(
+                    """
+                    SELECT id, device_ip, domain, service, reason, status, decision, created_at, decided_at, expires_at
+                    FROM access_requests
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                    """,
+                    (limit,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT id, device_ip, domain, service, reason, status, decision, created_at, decided_at, expires_at
+                    FROM access_requests
+                    WHERE status = 'pending'
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                    """,
+                    (limit,),
+                ).fetchall()
+        return [_serialize_access_request(row) for row in rows]
+
+    def decide_access_request(self, request_id: int, *, decision: str, expires_at: str | None = None) -> dict[str, object]:
+        allowed = {"allow_once", "allow_15m", "allow_1h", "always_allow", "deny"}
+        if decision not in allowed:
+            raise ValueError("Unsupported access request decision")
+        status = "approved" if decision.startswith("allow") else "denied"
+        with self.connect() as conn:
+            cursor = conn.execute(
+                """
+                UPDATE access_requests
+                SET status = ?, decision = ?, decided_at = ?, expires_at = ?
+                WHERE id = ? AND status = 'pending'
+                """,
+                (status, decision, _now(), expires_at, request_id),
+            )
+            if cursor.rowcount == 0:
+                row = conn.execute("SELECT id FROM access_requests WHERE id = ?", (request_id,)).fetchone()
+                if row is None:
+                    raise LookupError(request_id)
+                raise ValueError("Access request has already been decided")
+        item = self.get_access_request(request_id)
+        if item is None:
+            raise LookupError(request_id)
+        return item
+
+    def get_community_settings(self) -> dict[str, object]:
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT mode, organization_name, updated_at FROM community_settings WHERE id = 1"
+            ).fetchone()
+        if row is None:
+            return {"mode": "private", "organizationName": "", "updatedAt": None, "enabled": False}
+        mode = row["mode"] if row["mode"] in {"private", "anonymous", "organization"} else "private"
+        return {
+            "mode": mode,
+            "organizationName": row["organization_name"] or "",
+            "updatedAt": row["updated_at"],
+            "enabled": mode != "private",
+        }
+
+    def update_community_settings(self, *, mode: str, organization_name: str = "") -> dict[str, object]:
+        normalized_mode = mode.strip().lower()
+        if normalized_mode not in {"private", "anonymous", "organization"}:
+            raise ValueError("Community mode must be private, anonymous, or organization")
+        normalized_org = organization_name.strip()
+        if len(normalized_org) > 80:
+            raise ValueError("Organization name must be 80 characters or fewer")
+        if normalized_mode != "organization":
+            normalized_org = ""
+        with self.connect() as conn:
+            conn.execute(
+                """
+                UPDATE community_settings
+                SET mode = ?, organization_name = ?, updated_at = ?
+                WHERE id = 1
+                """,
+                (normalized_mode, normalized_org, _now()),
+            )
+        return self.get_community_settings()
+
+    def get_retention_settings(self) -> dict[str, object]:
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT detailed_activity_days, alert_days, health_history_days, audit_log_days, report_days, updated_at
+                FROM retention_settings
+                WHERE id = 1
+                """
+            ).fetchone()
+        if row is None:
+            return {
+                "detailedActivityDays": 30,
+                "alertDays": 180,
+                "healthHistoryDays": 30,
+                "auditLogDays": 180,
+                "reportDays": 365,
+                "updatedAt": None,
+            }
+        return {
+            "detailedActivityDays": int(row["detailed_activity_days"]),
+            "alertDays": int(row["alert_days"]),
+            "healthHistoryDays": int(row["health_history_days"]),
+            "auditLogDays": int(row["audit_log_days"]),
+            "reportDays": int(row["report_days"]),
+            "updatedAt": row["updated_at"],
+        }
+
+    def update_retention_settings(
+        self,
+        *,
+        detailed_activity_days: int | None = None,
+        alert_days: int | None = None,
+        health_history_days: int | None = None,
+        audit_log_days: int | None = None,
+        report_days: int | None = None,
+    ) -> dict[str, object]:
+        current = self.get_retention_settings()
+        values = {
+            "detailed_activity_days": _retention_days(
+                detailed_activity_days, int(current["detailedActivityDays"]), "Detailed activity"
+            ),
+            "alert_days": _retention_days(alert_days, int(current["alertDays"]), "Alert"),
+            "health_history_days": _retention_days(
+                health_history_days, int(current["healthHistoryDays"]), "Health history"
+            ),
+            "audit_log_days": _retention_days(audit_log_days, int(current["auditLogDays"]), "Audit log"),
+            "report_days": _retention_days(report_days, int(current["reportDays"]), "Report"),
+        }
+        with self.connect() as conn:
+            conn.execute(
+                """
+                UPDATE retention_settings
+                SET detailed_activity_days = ?,
+                    alert_days = ?,
+                    health_history_days = ?,
+                    audit_log_days = ?,
+                    report_days = ?,
+                    updated_at = ?
+                WHERE id = 1
+                """,
+                (
+                    values["detailed_activity_days"],
+                    values["alert_days"],
+                    values["health_history_days"],
+                    values["audit_log_days"],
+                    values["report_days"],
+                    _now(),
+                ),
+            )
+        return self.get_retention_settings()
+
+    def retention_summary(self) -> dict[str, object]:
+        settings = self.get_retention_settings()
+        now_ts = time.time()
+        detailed_cutoff = now_ts - int(settings["detailedActivityDays"]) * 86400
+        health_cutoff_day = _epoch_iso(now_ts - int(settings["healthHistoryDays"]) * 86400)[:10]
+        alert_cutoff = _epoch_iso(now_ts - int(settings["alertDays"]) * 86400)
+        with self.connect() as conn:
+            bandwidth_old = conn.execute(
+                "SELECT COUNT(*) FROM bandwidth_samples WHERE sampled_at < ?", (detailed_cutoff,)
+            ).fetchone()[0]
+            usage_old = conn.execute("SELECT COUNT(*) FROM device_usage WHERE day < ?", (health_cutoff_day,)).fetchone()[0]
+            alerts_old = conn.execute("SELECT COUNT(*) FROM alerts WHERE created_at < ?", (alert_cutoff,)).fetchone()[0]
+        return {
+            "settings": settings,
+            "dryRun": True,
+            "wouldPrune": {
+                "bandwidthSamples": int(bandwidth_old),
+                "deviceUsageRows": int(usage_old),
+                "alerts": int(alerts_old),
+            },
+            "note": "Pi-Circle does not prune Pi-hole FTL query history from this setting.",
+        }
+
     def set_network_health(self, mode: str, healthy: bool, summary: str) -> None:
         with self.connect() as conn:
             conn.execute(
@@ -992,12 +1271,40 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _epoch_iso(value: float) -> str:
+    return datetime.fromtimestamp(value, tz=timezone.utc).replace(microsecond=0).isoformat()
+
+
+def _retention_days(value: int | None, fallback: int, label: str) -> int:
+    if value is None:
+        return fallback
+    normalized = int(value)
+    if normalized < 1 or normalized > 3650:
+        raise ValueError(f"{label} retention must be between 1 and 3650 days")
+    return normalized
+
+
 def _age_seconds(value: str, *, now: datetime | None = None) -> float:
     current = now or datetime.now(timezone.utc)
     parsed = datetime.fromisoformat(value)
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     return max(0.0, (current - parsed.astimezone(timezone.utc)).total_seconds())
+
+
+def _serialize_access_request(row: sqlite3.Row) -> dict[str, object]:
+    return {
+        "id": int(row["id"]),
+        "device_ip": row["device_ip"],
+        "domain": row["domain"],
+        "service": row["service"],
+        "reason": row["reason"],
+        "status": row["status"],
+        "decision": row["decision"],
+        "created_at": row["created_at"],
+        "decided_at": row["decided_at"],
+        "expires_at": row["expires_at"],
+    }
 
 
 DEVICE_TYPES = frozenset({"unknown", "router", "iphone", "ipad", "android", "pc", "laptop", "tv", "game", "iot"})

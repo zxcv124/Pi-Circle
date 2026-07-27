@@ -129,6 +129,8 @@ chmod 0640 "${CONFIG_DIR}/config.toml"
 
 install -o root -g root -m 0644 "${INSTALL_DIR}/packaging/systemd/pi-circle-agent.service" /etc/systemd/system/pi-circle-agent.service
 install -o root -g root -m 0644 "${INSTALL_DIR}/packaging/systemd/pi-circle-dashboard.service" /etc/systemd/system/pi-circle-dashboard.service
+install -o root -g root -m 0644 "${INSTALL_DIR}/packaging/systemd/pi-circle-gravity-update.service" /etc/systemd/system/pi-circle-gravity-update.service
+install -o root -g root -m 0644 "${INSTALL_DIR}/packaging/systemd/pi-circle-gravity-update.timer" /etc/systemd/system/pi-circle-gravity-update.timer
 install -o root -g root -m 0755 "${INSTALL_DIR}/scripts/set-arp-assisted-targets.sh" /usr/local/sbin/pi-circle-set-arp-assisted-targets
 install -o root -g root -m 0755 "${INSTALL_DIR}/scripts/enable-arp-assisted-target.sh" /usr/local/sbin/pi-circle-enable-arp-assisted-target
 install -o root -g root -m 0755 "${INSTALL_DIR}/scripts/pi-circle-pihole-ctl.sh" /usr/local/sbin/pi-circle-pihole-ctl
@@ -141,6 +143,7 @@ visudo -cf /etc/sudoers.d/pi-circle-dashboard >/dev/null
 
 systemctl daemon-reload
 systemctl enable nftables pihole-FTL pi-circle-agent pi-circle-dashboard 2>/dev/null || systemctl enable nftables pi-circle-agent pi-circle-dashboard
+systemctl enable --now pi-circle-gravity-update.timer
 systemctl restart nftables
 systemctl restart pihole-FTL 2>/dev/null || true
 systemctl restart pi-circle-agent
