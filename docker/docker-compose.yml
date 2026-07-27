@@ -1,0 +1,29 @@
+services:
+  pi-circle:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: pi-circle:0.1.0
+    container_name: pi-circle
+    restart: unless-stopped
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      PI_CIRCLE_INTERFACE: "${PI_CIRCLE_INTERFACE:-eth0}"
+      PI_CIRCLE_LAN_CIDR: "${PI_CIRCLE_LAN_CIDR:-192.168.1.0/24}"
+      PI_CIRCLE_GATEWAY_IP: "${PI_CIRCLE_GATEWAY_IP:-192.168.1.1}"
+      PI_CIRCLE_DASHBOARD_PORT: "${PI_CIRCLE_DASHBOARD_PORT:-8088}"
+      PI_CIRCLE_RUN_AGENT: "${PI_CIRCLE_RUN_AGENT:-1}"
+    volumes:
+      - pi-circle-config:/etc/pi-circle
+      - pi-circle-state:/var/lib/pi-circle
+      - pi-circle-logs:/var/log/pi-circle
+      - pihole-etc:/etc/pihole
+
+volumes:
+  pi-circle-config:
+  pi-circle-state:
+  pi-circle-logs:
+  pihole-etc:

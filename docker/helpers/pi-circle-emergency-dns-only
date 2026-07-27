@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+CONFIG="${PI_CIRCLE_CONFIG:-/etc/pi-circle/config.toml}"
+if [[ ! -f "${CONFIG}" ]]; then
+  printf 'Config not found: %s\n' "${CONFIG}" >&2
+  exit 66
+fi
+
+python3 - "$CONFIG" <<'PY'
+from pathlib import Path
+import re
+import sqlite3
+import sys
+import tomllib
+
+config = Path(sys.argv[1])
+raw = tomllib.loads(config.read_text(encoding="utf-8"))
+database = Path(str(raw.get("paths", {}).get("database", "/var/lib/pi-circle/pi-circle.db")))
+
+text = config.read_text(encoding="utf-8")
+replacements = {
+    r'^mode = ".*"$': 'mode = "dns_only"',
+    r'^enable_ipv4_forwarding = .*$': 'enable_ipv4_forwarding = false',
+    r'^dns_redirect_port_53 = .*$': 'dns_redirect_port_53 = false',
+    r'^arp_assisted_enabled = .*$': 'arp_assisted_enabled = false',
+    r'^arp_assisted_targets = \[.*\]$': 'arp_assisted_targets = []',
+    r'^block_wan_inbound_for_linked = .*$': 'block_wan_inbound_for_linked = false',
+    r'^auto_link_android = .*$': 'auto_link_android = false',
+}
+for pattern, replacement in replacements.items():
+    text, count = re.subn(pattern, replacement, text, count=1, flags=re.MULTILINE)
+    if count != 1:
+        raise SystemExit(f"Could not update config line matching {pattern}")
+temporary = config.with_suffix(".toml.tmp")
+temporary.write_text(text, encoding="utf-8")
+temporary.replace(config)
+
+cleared = 0
+if database.exists():
+    conn = sqlite3.connect(database)
+    try:
+        cursor = conn.execute(
+            """
+            UPDATE devices
+            SET managed = 0,
+                transparent_control = 0
+            WHERE managed != 0 OR transparent_control != 0
+            """
+        )
+        cleared = int(cursor.rowcount)
+        conn.commit()
+    finally:
+        conn.close()
+print(f"cleared_enrollments={cleared}")
+PY
+
+chown root:pi-circle "${CONFIG}"
+chmod 0640 "${CONFIG}"
+
+nft delete table inet pi_circle >/dev/null 2>&1 || true
+sysctl -w net.ipv4.ip_forward=0 >/dev/null 2>&1 || true
+pkill -TERM -x arpspoof >/dev/null 2>&1 || true
+sleep 0.2
+pkill -KILL -x arpspoof >/dev/null 2>&1 || true
+
+printf 'Emergency DNS-only recovery applied.\n'
