@@ -105,5 +105,50 @@ class PiholeControlValidationTests(unittest.TestCase):
         self.assertIn("ExecStart=/usr/local/sbin/pi-circle-pihole-ctl update-gravity", service)
 
 
+    def test_read_status_overrides_broken_pihole_cli(self) -> None:
+        def fake_run(command, **_kwargs):
+            cmd = list(command)
+            if cmd[:2] == ["systemctl", "show"] and "pihole-FTL" in cmd:
+                return subprocess.CompletedProcess(
+                    command,
+                    0,
+                    stdout="ActiveState=active\nSubState=running\n",
+                    stderr="",
+                )
+            if cmd[:2] == ["systemctl", "show"]:
+                return subprocess.CompletedProcess(
+                    command,
+                    0,
+                    stdout=(
+                        "LoadState=loaded\nActiveState=active\nSubState=waiting\n"
+                        "UnitFileState=enabled\nNextElapseUSecRealtime=\n"
+                        "LastTriggerUSec=\nResult=success\nExecMainStatus=0\n"
+                        "InactiveExitTimestamp=\n"
+                    ),
+                    stderr="",
+                )
+            if cmd[:3] == ["pihole-FTL", "--config", "-q"] and cmd[-1] == "dns.blocking.active":
+                return subprocess.CompletedProcess(command, 0, stdout="true\n", stderr="")
+            if "status" in cmd:
+                return subprocess.CompletedProcess(
+                    command,
+                    0,
+                    stdout="  [✗] DNS service is NOT running\n",
+                    stderr="",
+                )
+            return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+        with (
+            patch.object(pihole_control, "_pihole_cli_available", return_value=True),
+            patch.object(pihole_control.subprocess, "run", side_effect=fake_run),
+        ):
+            status = pihole_control.read_status(pihole_dir=Path("/tmp"))
+
+        self.assertTrue(status.installed)
+        self.assertTrue(status.ftl_listening)
+        self.assertTrue(status.blocking_enabled)
+        self.assertIn("pihole-FTL is active", status.raw)
+
+
 if __name__ == "__main__":
     unittest.main()

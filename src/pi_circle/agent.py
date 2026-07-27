@@ -83,6 +83,7 @@ class Agent:
                     store,
                     [str(target) for target in settings.network.arp_assisted_targets],
                     observed_ips,
+                    allow_promote=settings.network.mode == "arp_assisted" and settings.network.arp_assisted_enabled,
                 )
                 if changed is not None:
                     settings = load_settings(self.config_path)

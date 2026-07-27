@@ -133,9 +133,13 @@ install -o root -g root -m 0644 "${INSTALL_DIR}/packaging/systemd/pi-circle-grav
 install -o root -g root -m 0644 "${INSTALL_DIR}/packaging/systemd/pi-circle-gravity-update.timer" /etc/systemd/system/pi-circle-gravity-update.timer
 install -o root -g root -m 0755 "${INSTALL_DIR}/scripts/set-arp-assisted-targets.sh" /usr/local/sbin/pi-circle-set-arp-assisted-targets
 install -o root -g root -m 0755 "${INSTALL_DIR}/scripts/enable-arp-assisted-target.sh" /usr/local/sbin/pi-circle-enable-arp-assisted-target
+install -o root -g root -m 0755 "${INSTALL_DIR}/scripts/set-network-flags.sh" /usr/local/sbin/pi-circle-set-network-flags
+install -o root -g root -m 0755 "${INSTALL_DIR}/scripts/emergency-dns-only.sh" /usr/local/sbin/pi-circle-emergency-dns-only
 install -o root -g root -m 0755 "${INSTALL_DIR}/scripts/pi-circle-pihole-ctl.sh" /usr/local/sbin/pi-circle-pihole-ctl
 cat > /etc/sudoers.d/pi-circle-dashboard <<'EOF'
 pi-circle ALL=(root) NOPASSWD: /usr/local/sbin/pi-circle-set-arp-assisted-targets *
+pi-circle ALL=(root) NOPASSWD: /usr/local/sbin/pi-circle-set-network-flags *
+pi-circle ALL=(root) NOPASSWD: /usr/local/sbin/pi-circle-emergency-dns-only
 pi-circle ALL=(root) NOPASSWD: /usr/local/sbin/pi-circle-pihole-ctl *
 EOF
 chmod 0440 /etc/sudoers.d/pi-circle-dashboard

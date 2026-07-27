@@ -35,7 +35,11 @@ class NetworkConfig:
     arp_assisted_targets: tuple[IPv4Address, ...] = field(default_factory=tuple)
     unmanaged_ips: tuple[IPv4Address, ...] = field(default_factory=tuple)
     block_quic_for_linked: bool = True
-    block_wan_inbound_for_linked: bool = True
+    block_wan_inbound_for_linked: bool = False
+    # Prefer IPv4 for linked DNS/path: suppress AAAA answers and drop forwarded IPv6.
+    force_ipv4: bool = True
+    # Hijack plain DNS to Pi-hole and block common DoH/DoT bypass resolvers for linked devices.
+    force_pi_dns: bool = True
 
 
 @dataclass(frozen=True)
@@ -49,7 +53,7 @@ class PrivacyConfig:
 @dataclass(frozen=True)
 class DiscoveryConfig:
     use_nmap: bool = True
-    auto_link_android: bool = True
+    auto_link_android: bool = False
     nmap_interval_seconds: int = 900
     nmap_max_hosts: int = 8
 
@@ -182,7 +186,9 @@ def load_settings(path: str | PathLike[str] | Path = DEFAULT_CONFIG_PATH) -> Set
         arp_assisted_targets=_ipv4_tuple(network_raw.get("arp_assisted_targets", []), "network.arp_assisted_targets"),
         unmanaged_ips=_ipv4_tuple(network_raw.get("unmanaged_ips", []), "network.unmanaged_ips"),
         block_quic_for_linked=bool(network_raw.get("block_quic_for_linked", True)),
-        block_wan_inbound_for_linked=bool(network_raw.get("block_wan_inbound_for_linked", True)),
+        block_wan_inbound_for_linked=bool(network_raw.get("block_wan_inbound_for_linked", False)),
+        force_ipv4=bool(network_raw.get("force_ipv4", True)),
+        force_pi_dns=bool(network_raw.get("force_pi_dns", True)),
     )
 
     if network.gateway_ip not in network.lan_cidr:
@@ -230,7 +236,7 @@ def load_settings(path: str | PathLike[str] | Path = DEFAULT_CONFIG_PATH) -> Set
 
     discovery = DiscoveryConfig(
         use_nmap=bool(discovery_raw.get("use_nmap", True)),
-        auto_link_android=bool(discovery_raw.get("auto_link_android", True)),
+        auto_link_android=bool(discovery_raw.get("auto_link_android", False)),
         nmap_interval_seconds=max(60, int(discovery_raw.get("nmap_interval_seconds", 900))),
         nmap_max_hosts=max(1, min(32, int(discovery_raw.get("nmap_max_hosts", 8)))),
     )

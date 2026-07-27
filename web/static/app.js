@@ -208,6 +208,7 @@ const elements = {
   reportDomains: document.querySelector("#report-domains"),
   systemPanel: document.querySelector("#system-panel"),
   systemRefresh: document.querySelector("#system-refresh"),
+  emergencyDnsOnly: document.querySelector("#emergency-dns-only"),
   systemSummary: document.querySelector("#system-summary"),
   systemServices: document.querySelector("#system-services"),
   systemResources: document.querySelector("#system-resources"),
@@ -215,6 +216,7 @@ const elements = {
   settingsPanel: document.querySelector("#settings-panel"),
   capabilityList: document.querySelector("#capability-list"),
   communityPanel: document.querySelector("#community-panel"),
+  networkSettingsPanel: document.querySelector("#network-settings-panel"),
   retentionPanel: document.querySelector("#retention-panel"),
   securityStatus: document.querySelector("#security-status"),
   auditList: document.querySelector("#audit-list"),
@@ -283,6 +285,7 @@ elements.reportPeriod?.addEventListener("change", () => loadReport());
 elements.reportPrivacy?.addEventListener("change", () => loadReport());
 elements.reportExport?.addEventListener("click", () => exportReportCsv());
 elements.systemRefresh?.addEventListener("click", () => loadSystemHealth());
+elements.emergencyDnsOnly?.addEventListener("click", () => applyEmergencyDnsOnly());
 elements.themeButtons.forEach((button) => {
   button.addEventListener("click", () => setTheme(button.dataset.themeSet || "lcars"));
 });
@@ -2635,6 +2638,21 @@ async function loadSystemHealth() {
   }
 }
 
+async function applyEmergencyDnsOnly() {
+  const confirmed = window.confirm(
+    "Emergency DNS-only will stop ARP control, clear linked enrollments, and flush Pi-Circle network rules. Continue?"
+  );
+  if (!confirmed) return;
+  try {
+    const payload = await postJson("/api/network/emergency-dns-only");
+    showStatus(`Emergency DNS-only applied. Cleared ${payload.clearedEnrollments || 0} enrollment(s).`, "good");
+    await refresh();
+    await loadSystemHealth();
+  } catch (error) {
+    showStatus(error.message, "bad");
+  }
+}
+
 function renderSystemHealth() {
   const health = state.systemHealth || {};
   const resources = health.resources || {};
@@ -2673,18 +2691,20 @@ function renderSystemHealth() {
 async function loadSettingsPanels() {
   if (!elements.settingsPanel) return;
   try {
-    const [capabilities, community, retention, security, audit] = await Promise.all([
+    const [capabilities, community, retention, security, audit, networkSettings] = await Promise.all([
       getJson("/api/setup/capabilities"),
       getJson("/api/community"),
       getJson("/api/retention"),
       getJson("/api/security/status"),
       getJson("/api/audit?limit=20"),
+      getJson("/api/network/settings"),
     ]);
     state.capabilities = capabilities;
     state.community = community;
     state.retention = retention;
     state.security = security.security || null;
     state.auditEvents = audit.events || [];
+    state.networkSettings = networkSettings;
     renderSettingsPanels();
   } catch (error) {
     if (elements.capabilityList) elements.capabilityList.innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`;
@@ -2699,6 +2719,7 @@ function renderSettingsPanels() {
     (row) => `${row.status} · ${row.detail}`,
     (row) => row.enabled
   );
+  renderNetworkSettingsPanel();
   renderCommunityPanel();
   renderRetentionPanel();
   const security = state.security || {};
@@ -2722,6 +2743,44 @@ function renderSettingsPanels() {
     (row) => `${row.result || "unknown"} · ${row.reason || ""}`,
     (row) => row.result === "success"
   );
+}
+
+function renderNetworkSettingsPanel() {
+  if (!elements.networkSettingsPanel) return;
+  const settings = state.networkSettings?.settings || { forceIpv4: true, forcePiDns: true };
+  const linked = settings.linkedTargets || [];
+  const forceIpv4 = settings.forceIpv4 !== false;
+  const forcePiDns = settings.forcePiDns !== false;
+  elements.networkSettingsPanel.innerHTML = `
+    <label class="force-ipv4-toggle">
+      <input type="checkbox" id="force-pi-dns-toggle" ${forcePiDns ? "checked" : ""} />
+      <span>Force Pi DNS</span>
+    </label>
+    <p class="device-card-meta">${escapeHtml(state.networkSettings?.detail || "Hijacks DNS to Pi-hole for linked devices — no phone setup.")}</p>
+    <label class="force-ipv4-toggle">
+      <input type="checkbox" id="force-ipv4-toggle" ${forceIpv4 ? "checked" : ""} />
+      <span>Force IPv4</span>
+    </label>
+    <p class="device-card-meta">Suppresses AAAA answers and drops forwarded IPv6.</p>
+    <p class="device-card-meta">Linked now: ${linked.length ? escapeHtml(linked.join(", ")) : "none"} · mode ${escapeHtml(settings.mode || "—")}</p>
+    <button class="secondary-button compact" type="button" id="network-settings-save">Save</button>
+  `;
+  elements.networkSettingsPanel.querySelector("#network-settings-save")?.addEventListener("click", saveNetworkSettings);
+}
+
+async function saveNetworkSettings() {
+  const forceIpv4 = Boolean(elements.networkSettingsPanel?.querySelector("#force-ipv4-toggle")?.checked);
+  const forcePiDns = Boolean(elements.networkSettingsPanel?.querySelector("#force-pi-dns-toggle")?.checked);
+  try {
+    state.networkSettings = await patchJson("/api/network/settings", {
+      force_ipv4: forceIpv4,
+      force_pi_dns: forcePiDns,
+    });
+    renderNetworkSettingsPanel();
+    showStatus("Network settings saved", "good");
+  } catch (error) {
+    showStatus(error.message, "bad");
+  }
 }
 
 function renderCommunityPanel() {

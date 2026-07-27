@@ -534,6 +534,18 @@ class Store:
                 return device
         raise LookupError(ip_address)
 
+    def clear_device_enrollments(self) -> int:
+        with self.connect() as conn:
+            cursor = conn.execute(
+                """
+                UPDATE devices
+                SET managed = 0,
+                    transparent_control = 0
+                WHERE managed != 0 OR transparent_control != 0
+                """
+            )
+            return int(cursor.rowcount)
+
     def list_active_enrolled_ips(
         self,
         observed_ips: set[str] | None = None,

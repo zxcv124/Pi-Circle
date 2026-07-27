@@ -30,6 +30,27 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual(settings.network.mode, "dns_only")
             self.assertEqual(settings.network.interface, "wlan0")
             self.assertEqual(str(settings.network.gateway_ip), "192.168.4.1")
+            self.assertTrue(settings.network.force_ipv4)
+            self.assertTrue(settings.network.force_pi_dns)
+
+    def test_force_ipv4_can_be_disabled(self) -> None:
+        with TemporaryPath() as tmp_path:
+            config = tmp_path / "config.toml"
+            config.write_text(
+                textwrap.dedent(
+                    """
+                    [network]
+                    mode = "dns_only"
+                    interface = "wlan0"
+                    lan_cidr = "192.168.4.0/24"
+                    gateway_ip = "192.168.4.1"
+                    force_ipv4 = false
+                    """
+                ),
+                encoding="utf-8",
+            )
+            settings = load_settings(config)
+            self.assertFalse(settings.network.force_ipv4)
 
     def test_load_settings_accepts_string_config_path(self) -> None:
         with TemporaryPath() as tmp_path:

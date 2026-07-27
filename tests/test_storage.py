@@ -196,6 +196,20 @@ class StorageTests(unittest.TestCase):
 
             self.assertEqual(store.list_active_enrolled_ips({"192.168.4.21"}), [])
 
+    def test_store_clears_all_enrollments_for_emergency_recovery(self) -> None:
+        with TemporaryDirectory() as tmp:
+            store = Store(Path(tmp) / "state.db")
+            store.initialize()
+            store.upsert_device("192.168.4.21", "aa:bb:cc:dd:ee:04", "phone", "high")
+            store.upsert_device("192.168.4.22", "aa:bb:cc:dd:ee:05", "tablet", "high")
+            store.set_device_enrollment("192.168.4.21", True)
+            store.set_device_enrollment("192.168.4.22", True)
+
+            cleared = store.clear_device_enrollments()
+
+            self.assertEqual(cleared, 2)
+            self.assertEqual(store.list_active_enrolled_ips({"192.168.4.21", "192.168.4.22"}), [])
+
     def test_store_prunes_absent_unenrolled_devices(self) -> None:
         with TemporaryDirectory() as tmp:
             store = Store(Path(tmp) / "state.db")

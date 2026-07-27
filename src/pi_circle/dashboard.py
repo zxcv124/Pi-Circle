@@ -36,6 +36,8 @@ from .storage import DEVICE_TYPES, Store
 SOURCE_ROOT = Path(__file__).resolve().parents[2]
 WEB_DIR = Path(os.environ.get("PI_CIRCLE_WEB_DIR", SOURCE_ROOT / "web"))
 ARP_TARGET_HELPER = Path("/usr/local/sbin/pi-circle-set-arp-assisted-targets")
+EMERGENCY_DNS_ONLY_HELPER = Path("/usr/local/sbin/pi-circle-emergency-dns-only")
+NETWORK_FLAGS_HELPER = Path("/usr/local/sbin/pi-circle-set-network-flags")
 
 
 class DeviceControlRequest(BaseModel):
@@ -104,6 +106,11 @@ class AccessRequestDecisionRequest(BaseModel):
 class CommunitySettingsRequest(BaseModel):
     mode: str = Field(min_length=3, max_length=32)
     organization_name: str = Field(default="", max_length=80)
+
+
+class NetworkSettingsRequest(BaseModel):
+    force_ipv4: bool = True
+    force_pi_dns: bool = True
 
 
 class RetentionSettingsRequest(BaseModel):
@@ -464,6 +471,20 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
         _set_arp_targets([])
         return _control_response(app)
 
+    @app.post("/api/network/emergency-dns-only")
+    def emergency_dns_only(request: Request) -> dict[str, object]:
+        current_settings = load_settings(app.state.config_path)
+        _require_lan_admin(request, current_settings)
+        cleared = app.state.store.clear_device_enrollments()
+        result = _emergency_dns_only()
+        app.state.store.set_network_health("dns_only", True, "Emergency DNS-only recovery applied")
+        return {
+            "ok": True,
+            "clearedEnrollments": cleared,
+            "result": result,
+            "control": _control_response(app),
+        }
+
     @app.get("/api/config-summary")
     def config_summary(request: Request) -> dict[str, object]:
         current_settings = load_settings(app.state.config_path)
@@ -483,8 +504,23 @@ def create_app(config_path: Path = DEFAULT_CONFIG_PATH) -> FastAPI:
                 "targetCount": len(current_settings.network.arp_assisted_targets),
                 "targets": [str(target) for target in current_settings.network.arp_assisted_targets],
                 "dnsRedirect": current_settings.network.dns_redirect_port_53,
+                "forceIpv4": current_settings.network.force_ipv4,
             },
         }
+
+    @app.get("/api/network/settings")
+    def network_settings(request: Request) -> dict[str, object]:
+        current_settings = load_settings(app.state.config_path)
+        _require_lan_admin(request, current_settings)
+        return _network_settings_payload(current_settings)
+
+    @app.patch("/api/network/settings")
+    def update_network_settings(payload: NetworkSettingsRequest, request: Request) -> dict[str, object]:
+        current_settings = load_settings(app.state.config_path)
+        _require_lan_admin(request, current_settings)
+        _set_network_flags(force_ipv4=bool(payload.force_ipv4), force_pi_dns=bool(payload.force_pi_dns))
+        updated = load_settings(app.state.config_path)
+        return _network_settings_payload(updated)
 
     @app.get("/api/pihole")
     def pihole_summary() -> dict[str, object]:
@@ -1189,7 +1225,7 @@ def _set_arp_targets(targets: list[str]) -> None:
         raise HTTPException(status_code=500, detail=f"Missing helper: {ARP_TARGET_HELPER}")
     try:
         completed = subprocess.run(
-            ["sudo", "-n", str(ARP_TARGET_HELPER), *targets],
+            ["sudo", "-n", str(ARP_TARGET_HELPER), "--no-restart", *targets],
             check=False,
             capture_output=True,
             text=True,
@@ -1200,6 +1236,71 @@ def _set_arp_targets(targets: list[str]) -> None:
     if completed.returncode != 0:
         detail = completed.stderr.strip() or completed.stdout.strip() or "Failed to apply ARP-assisted target changes"
         raise HTTPException(status_code=400, detail=detail)
+
+
+def _emergency_dns_only() -> dict[str, object]:
+    if not EMERGENCY_DNS_ONLY_HELPER.exists():
+        raise HTTPException(status_code=500, detail=f"Missing helper: {EMERGENCY_DNS_ONLY_HELPER}")
+    try:
+        completed = subprocess.run(
+            ["sudo", "-n", str(EMERGENCY_DNS_ONLY_HELPER)],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=8,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise HTTPException(status_code=504, detail="Timed out applying emergency DNS-only recovery") from exc
+    if completed.returncode != 0:
+        detail = completed.stderr.strip() or completed.stdout.strip() or "Emergency DNS-only recovery failed"
+        raise HTTPException(status_code=500, detail=detail)
+    return {"stdout": completed.stdout.strip(), "stderr": completed.stderr.strip(), "returncode": completed.returncode}
+
+
+def _set_network_flags(*, force_ipv4: bool, force_pi_dns: bool) -> None:
+    if not NETWORK_FLAGS_HELPER.exists():
+        raise HTTPException(status_code=500, detail=f"Missing helper: {NETWORK_FLAGS_HELPER}")
+    try:
+        completed = subprocess.run(
+            [
+                "sudo",
+                "-n",
+                str(NETWORK_FLAGS_HELPER),
+                "--force-ipv4",
+                "true" if force_ipv4 else "false",
+                "--force-pi-dns",
+                "true" if force_pi_dns else "false",
+                "--no-restart",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=90,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise HTTPException(status_code=504, detail="Timed out applying network settings") from exc
+    if completed.returncode != 0:
+        detail = completed.stderr.strip() or completed.stdout.strip() or "Failed to apply network settings"
+        raise HTTPException(status_code=400, detail=detail)
+
+
+def _network_settings_payload(settings) -> dict[str, object]:
+    return {
+        "settings": {
+            "forceIpv4": bool(settings.network.force_ipv4),
+            "forcePiDns": bool(getattr(settings.network, "force_pi_dns", True)),
+            "mode": settings.network.mode,
+            "arpAssistedEnabled": bool(settings.network.arp_assisted_enabled),
+            "linkedTargets": [str(target) for target in settings.network.arp_assisted_targets],
+            "dnsRedirect": bool(settings.network.dns_redirect_port_53),
+            "blockQuicForLinked": bool(settings.network.block_quic_for_linked),
+        },
+        "detail": (
+            "Force Pi DNS works like Circle: linked phones keep whatever DNS they show, but the Pi hijacks port 53 and blocks Secure DNS / DoH automatically — no settings on the kid's phone."
+            if getattr(settings.network, "force_pi_dns", True)
+            else "Force Pi DNS is off. Linked phones may keep using the router or encrypted DNS."
+        ),
+    }
 
 
 def _cached(app: FastAPI, key: str, ttl_seconds: int, producer) -> dict[str, object]:

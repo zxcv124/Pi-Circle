@@ -64,6 +64,25 @@ class EnrollmentTests(unittest.TestCase):
             self.assertEqual(changed, ["192.168.4.21"])
             self.assertEqual(applied, [["192.168.4.21"]])
 
+    def test_reconcile_does_not_promote_dns_only_without_explicit_allow(self) -> None:
+        with TemporaryDirectory() as tmp:
+            store = Store(Path(tmp) / "state.db")
+            store.initialize()
+            store.upsert_device("192.168.4.21", "aa:bb:cc:dd:ee:15", "phone", "high")
+            store.set_device_enrollment("192.168.4.21", True)
+
+            applied: list[list[str]] = []
+            changed = reconcile_enrolled_targets(
+                store,
+                [],
+                {"192.168.4.21"},
+                apply_fn=applied.append,
+                allow_promote=False,
+            )
+
+            self.assertIsNone(changed)
+            self.assertEqual(applied, [])
+
     def test_reconcile_ignores_unenrolled_devices(self) -> None:
         with TemporaryDirectory() as tmp:
             store = Store(Path(tmp) / "state.db")

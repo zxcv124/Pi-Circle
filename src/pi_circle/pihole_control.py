@@ -86,6 +86,19 @@ def read_status(*, pihole_dir: Path | None = None) -> PiholeControlStatus:
         listening = False
     else:
         listening = None
+
+    # Pi-hole Core `status` can lie on FTL v6 when `files.pid` is gone.
+    # Prefer live systemd + FTL config probes so the UI matches reality.
+    probed_listening, probed_blocking, probe_note = _ftl_runtime_probe()
+    if listening is not True and probed_listening is True:
+        listening = True
+    if listening is None and probed_listening is not None:
+        listening = probed_listening
+    if blocking is None and probed_blocking is not None:
+        blocking = probed_blocking
+    if probe_note and (not text or "dns service is not running" in lowered):
+        text = probe_note if not text else f"{text}\n{probe_note}"
+
     return PiholeControlStatus(
         installed=True,
         blocking_enabled=blocking,
@@ -249,6 +262,57 @@ def _run(args: list[str], *, timeout: int) -> PiholeControlResult:
         stderr=(completed.stderr or "").strip(),
         returncode=int(completed.returncode),
     )
+
+
+def _ftl_runtime_probe() -> tuple[bool | None, bool | None, str]:
+    """Probe live FTL state without relying on the broken `pihole status` PID path."""
+    notes: list[str] = []
+    listening: bool | None = None
+    blocking: bool | None = None
+
+    unit = _systemctl_show("pihole-FTL", ["ActiveState", "SubState"])
+    active_state = (unit.get("ActiveState") or "").strip().lower()
+    if active_state == "active":
+        listening = True
+        notes.append("pihole-FTL is active (systemd)")
+    elif active_state:
+        listening = False
+        notes.append(f"pihole-FTL systemd state: {active_state}")
+
+    blocking_raw = _ftl_config_value("dns.blocking.active")
+    if blocking_raw is not None:
+        lowered = blocking_raw.strip().lower()
+        if lowered in {"true", "1", "yes", "on"}:
+            blocking = True
+            notes.append("DNS blocking is enabled")
+        elif lowered in {"false", "0", "no", "off"}:
+            blocking = False
+            notes.append("DNS blocking is disabled")
+
+    return listening, blocking, "; ".join(notes)
+
+
+def _ftl_config_value(key: str) -> str | None:
+    for command in (
+        ["pihole-FTL", "--config", "-q", key],
+        ["pihole-FTL", "--config", key],
+    ):
+        try:
+            completed = subprocess.run(command, check=False, capture_output=True, text=True, timeout=8)
+        except (subprocess.TimeoutExpired, OSError):
+            continue
+        if completed.returncode != 0:
+            continue
+        text = (completed.stdout or "").strip()
+        if not text:
+            continue
+        # Non-quiet mode prints "key = value"
+        if "=" in text and text.split("=", 1)[0].strip() == key:
+            return text.split("=", 1)[1].strip()
+        if "unknown config option" in text.lower():
+            continue
+        return text.splitlines()[-1].strip()
+    return None
 
 
 def _systemctl_show(unit: str, properties: list[str]) -> dict[str, str]:

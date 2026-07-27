@@ -78,6 +78,8 @@ replacements = {
     r'^dns_redirect_port_53 = .*$': f'dns_redirect_port_53 = {str(enabled).lower()}',
     r'^arp_assisted_enabled = .*$': f'arp_assisted_enabled = {str(enabled).lower()}',
     r'^arp_assisted_targets = \[.*\]$': f'arp_assisted_targets = [{quoted}]',
+    r'^block_wan_inbound_for_linked = .*$': 'block_wan_inbound_for_linked = false',
+    r'^auto_link_android = .*$': 'auto_link_android = false',
 }
 for pattern, replacement in replacements.items():
     text, count = re.subn(pattern, replacement, text, count=1, flags=re.MULTILINE)

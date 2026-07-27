@@ -17,7 +17,11 @@ arp_assisted_targets = []
 unmanaged_ips = []
 # Linked-device safeguards against DNS bypass / unsolicited inbound
 block_quic_for_linked = true
-block_wan_inbound_for_linked = true
+block_wan_inbound_for_linked = false
+# Force IPv4 for linked devices (suppress AAAA DNS + drop forwarded IPv6)
+force_ipv4 = true
+# Force linked devices through Pi-hole DNS (redirect :53 + block DoH resolvers)
+force_pi_dns = true
 
 [privacy]
 enabled = true
@@ -29,7 +33,7 @@ alert_on_hits = true
 [discovery]
 use_nmap = true
 # Automatically Link (ARP-assisted) every identified Android on the LAN
-auto_link_android = true
+auto_link_android = false
 nmap_interval_seconds = 900
 nmap_max_hosts = 8
 

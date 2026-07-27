@@ -20,7 +20,7 @@
       href="https://fonts.googleapis.com/css2?family=Antonio:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&family=Share+Tech+Mono&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/static/app.css?v=20260727" />
+    <link rel="stylesheet" href="/static/app.css?v=20260727-force-pi-dns" />
     <script>
       (function () {
         try {
@@ -550,7 +550,14 @@
           <div class="system-grid">
             <section class="overview-card"><div class="section-title"><h2>Services</h2></div><div id="system-services" class="health-list"></div></section>
             <section class="overview-card"><div class="section-title"><h2>Resources</h2></div><div id="system-resources" class="info-grid"></div></section>
-            <section class="overview-card"><div class="section-title"><h2>Safe Actions</h2></div><div id="system-actions" class="health-list"></div></section>
+            <section class="overview-card">
+              <div class="section-title"><h2>Safe Actions</h2></div>
+              <div class="system-emergency">
+                <button class="danger-button compact" type="button" id="emergency-dns-only">Emergency DNS-only</button>
+                <p class="device-card-meta">Stops ARP control, clears linked enrollments, flushes Pi-Circle nftables rules, and leaves unlinked devices untouched.</p>
+              </div>
+              <div id="system-actions" class="health-list"></div>
+            </section>
           </div>
         </section>
 
@@ -563,6 +570,10 @@
           </div>
           <div class="settings-grid">
             <section class="overview-card"><div class="section-title"><h2>Capability Detection</h2></div><div id="capability-list" class="health-list"></div></section>
+            <section class="overview-card">
+              <div class="section-title"><h2>Network</h2></div>
+              <div id="network-settings-panel" class="network-settings-panel"></div>
+            </section>
             <section class="overview-card"><div class="section-title"><h2>Community Protection</h2></div><div id="community-panel" class="community-panel"></div></section>
             <section class="overview-card"><div class="section-title"><h2>Retention</h2></div><div id="retention-panel" class="retention-panel"></div></section>
             <section class="overview-card"><div class="section-title"><h2>Security Status</h2></div><div id="security-status" class="health-list"></div></section>
@@ -583,6 +594,6 @@
       </div>
     </div>
 
-    <script src="/static/app.js?v=20260727" type="module"></script>
+    <script src="/static/app.js?v=20260727-force-pi-dns" type="module"></script>
   </body>
 </html>

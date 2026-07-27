@@ -85,6 +85,7 @@ def reconcile_enrolled_targets(
     *,
     apply_fn: Callable[[list[str]], None] | None = None,
     max_age_seconds: int = DEFAULT_ONLINE_AGE_SECONDS,
+    allow_promote: bool = True,
 ) -> list[str] | None:
     """Sync config targets to enrolled devices that are online.
 
@@ -94,6 +95,8 @@ def reconcile_enrolled_targets(
     # transient config targets (that fought emergency dns_only rollbacks).
     desired = resolve_active_enrolled_targets(store, observed_ips=observed_ips, max_age_seconds=max_age_seconds)
     current = [str(value) for value in current_targets]
+    if not allow_promote and not current:
+        return None
     if not targets_differ(current, desired):
         return None
     # Enrolled devices must auto-reconnect when they reappear, including promoting
