@@ -4,7 +4,6 @@
 
 One installer. One appliance. Pi-Circle is the main console; [Pi-hole](https://pi-hole.net/) provides blocking, gravity, and query intel underneath (credited in the UI).
 
-**Made by Yahya** · [@914ix on Instagram](https://instagram.com/914ix)
 
 ## What you get
 
@@ -66,7 +65,7 @@ Pi-hole remains under its own licenses and trademarks. Pi-Circle integrates with
 
 ## Author
 
-Yahya — [@914ix](https://instagram.com/914ix)
+Yahya 
 
 ## Safety
 
